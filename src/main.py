@@ -1,6 +1,6 @@
 import MySQLdb
 import json
-from more_itertools import chunked
+from circus_itertools import lazy_chunked as chunked
 from itertools import chain
 from Page import Page
 
@@ -77,8 +77,8 @@ def allPageTitlesGenerator():
 
 
 if 1:
-    pages = {createPageByTitle(title) for title in allPageTitlesGenerator()}
-    infopages = [p for p in pages if p.info]
+    pages = map(createPageByTitle, allPageTitlesGenerator())
+    infopages = filter(lambda p: p.info, pages)
 
     for pageList in chunked(infopages, 100):
         cur.execute("""
