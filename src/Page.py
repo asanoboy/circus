@@ -1,45 +1,20 @@
 
 class PageInfo:
     name = False
-    parts = {}
-    def __init__(self, text):
-        text = text.strip("{}")
-        parts = [ part.strip() for part in text.split('|') ]
-        header = parts.pop(0)
-        if header.count('Infobox '):
-            self.name = ' '.join(header.split(' ')[1:])
-        elif header.count('Infobox　'):
-            self.name = ' '.join(header.split('　')[1:])
-        elif header.count('Infobox_'):
-            self.name = '_'.join(header.split('_')[1:])
-        elif header == 'Infobox':
-            self.name = False
-        else:
-            print(text)
-            raise
-
-
-        self.parts = { elems[0].strip(): elems[1].strip() for elems in \
-            [ part.split('=') for part in parts if part.find('=')>=0 ] \
-            if len(elems) == 2 }
+    keyValue = {}
+    def __init__(self, name, keyValue):
+        self.name = name
+        self.keyValue = keyValue
 
 class Page:
     id = False
     title = ''
     info = False
-    #text = False
-    def __init__(self, id, title, rawText):
-        #self.text = rawText
+    text = False
+    def __init__(self, id, title, info):
         self.title = title
         self.id = id
-        text = Page._removeComment(rawText)
-        infoText = Page._findInfobox(text)
-        if( infoText ):
-            try:
-                self.info = PageInfo(infoText)
-            except:
-                print(rawText)
-                raise
+        self.info = info
 
 
         
