@@ -171,18 +171,21 @@ def selectGenerator(table, cols=[], joins=[], cond='', order=''):
             sql += " where %s " % (cond,)
         if order:
             sql += " order by %s " % (order,)
+
         _cur.execute(sql)
         cnt = 0
         while 1:
             cnt += 1
-            if cnt % 10 == 0:
+            if cnt % 100 == 0:
                 print(cnt)
+                pass
 
             rt = _cur.fetchone()
             if rt:
                 yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
             else:
                 break
+
         _cur.close()
 
 def allCategoryGenerator():
@@ -190,55 +193,24 @@ def allCategoryGenerator():
         yield Category(cols[0], cols[1])
 
 def allPageTitlesGenerator():
-    _conn = openConn()
-    with _conn:
-        _cur = _conn.cursor(cursorclass=DictUseResultCursor)
-        _cur.execute("""
-            select p.page_title title from page p 
-            where page_namespace = 0 order by page_title asc
-            """)
-        cnt = 0
-        while 1:
-            cnt += 1
-            if cnt % 1000 == 0:
-                print(cnt)
-
-            rt = _cur.fetchone()
-            if rt:
-                yield rt['title'].decode('utf-8')
-            else:
-                break
-        _cur.close()
+    for cols in selectGenerator('page', cols=['page_title'], cond='page_namespace = 0', \
+            order='page_title asc'):
+        yield cols[0]
 
 def allInfoDataGenerator():
-    _conn = openConn()
-    with _conn:
-        _cur = _conn.cursor(cursorclass=DictUseResultCursor)
-        _cur.execute("""
-            select p.page_title title, t.old_text text, t.old_id text_id from page p 
-            inner join revision r on r.rev_page = p.page_id
-            inner join text t on t.old_id = r.rev_text_id
-            where page_namespace = 10 order by p.page_title asc
-            """)
-        cnt = 0
-        while 1:
-            rt = _cur.fetchone()
-            if not rt:
-                break
-            
-            if not rt['title'].decode('utf-8').lower().startswith('infobox') \
-                    and rt['text'].decode('utf-8').lower().find('infobox') == -1:
-                continue
+    for cols in selectGenerator('page p', \
+            joins=[\
+                'inner join revision r on r.rev_page = p.page_id', \
+                'inner join text t on t.old_id = r.rev_text_id' \
+            ], \
+            cols=['p.page_title', 't.old_text','t.old_id'], \
+            cond='page_namespace = 10', \
+            order='p.page_title asc'):
 
-            cnt += 1
-            if cnt % 1000 == 0:
-                print(cnt)
-
-            if rt:
-                yield (rt['text_id'], rt['title'].decode('utf-8'))
-            else:
-                break
-        _cur.close()
+        if not cols[0].lower().startswith('infobox') \
+                and cols[1].lower().find('infobox') == -1:
+            continue
+        yield (cols[2], cols[0])
 
 def queryMultiInsert(table, cols, valuesList):
     cur.execute(("""
