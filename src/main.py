@@ -10,6 +10,14 @@ def openConn():
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
+class Category:
+    id = False
+    name = False
+
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
 def bracketTextGenerator(text):
     currentPos = 0
     startPos = -1
@@ -62,8 +70,9 @@ def createPageInfoByBracketText(text, allowedNames):
     name = text[:pos].strip().replace(' ', '_') \
         .replace('　', '_') # multibyte space
     
-    if name not in allowedNames:
-        return False
+    if allowedNames != False:
+        if name not in allowedNames:
+            return False
 
     text = text[pos+1:]
     keyValue = { elems[0].strip(): elems[1].strip() for elems in \
@@ -81,28 +90,42 @@ def createPageInfoByPageWikiText(text, allowedNames):
         return infos[0]
     else:
         return infos[0] # Apply first info.
-    
+
+def selectTextByTitle(title, namespace):
+    cur.execute("""
+        select t.old_text wiki, p.page_id id from page p 
+        inner join revision r on r.rev_page = p.page_id
+        inner join text t on t.old_id = r.rev_text_id
+        where p.page_title = %s and p.page_namespace = %s
+        """, (title, namespace))
+    res = cur.fetchall()
+    if len(res) > 0:
+        return res[0]['wiki'].decode('utf-8')
+    return False
+
+def createPageByTitle(title, allowedInfoNames=False):
+    cur.execute("""
+        select t.old_text wiki, p.page_id id from page p 
+        inner join revision r on r.rev_page = p.page_id
+        inner join text t on t.old_id = r.rev_text_id
+        where p.page_title = %s and p.page_namespace = 0
+        """, (title,))
+    res = cur.fetchall()
+    if len(res) > 0:
+        text = res[0]['wiki'].decode('utf-8')
+        info = createPageInfoByPageWikiText(text, allowedInfoNames)
+        if not info:
+            return False
+        return Page(res[0]['id'], title, len(text), info)
+    else:
+        return False 
 
 def createFunctionPageByTitle(allowedInfoNames):
-    def createPageByTitle(title):
-        cur.execute("""
-            select t.old_text wiki, p.page_id id from page p 
-            inner join revision r on r.rev_page = p.page_id
-            inner join text t on t.old_id = r.rev_text_id
-            where p.page_title = %s and p.page_namespace = 0
-            """, (title,))
-        res = cur.fetchall()
-        if len(res) > 0:
-            text = res[0]['wiki'].decode('utf-8')
-            info = createPageInfoByPageWikiText(text, allowedInfoNames)
-            if not info:
-                return False
-            return Page(res[0]['id'], title, info)
-        else:
-            return False 
-    return createPageByTitle
+    def createPageInternal(title):
+        return createPageByTitle(title, allowedInfoNames)
+    return createPageInternal
 
-def selectPages(catTitle, recursive=0, excludeTitles=set()):
+def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryTitles=set()):
     cur.execute("""
         select p.page_title title from categorylinks cl 
         inner join page p on cl.cl_from = p.page_id
@@ -110,6 +133,8 @@ def selectPages(catTitle, recursive=0, excludeTitles=set()):
         """, (catTitle,))
     res = cur.fetchall()
     pageTitles = set([record['title'].decode('utf-8') for record in res])
+    pageTitles = list(filter(lambda title: title not in excludePageTitles, pageTitles))
+    pages = [createPageByTitle(title) for title in pageTitles]
 
     if recursive:
         cur.execute("""
@@ -118,16 +143,51 @@ def selectPages(catTitle, recursive=0, excludeTitles=set()):
             where cl.cl_to=%s and cl_type = "subcat"
             """, (catTitle,))
         titles = set([record['title'].decode('utf-8') for record in cur.fetchall()])
-        joinedExcludeTitles = excludeTitles | titles;
-        for title in titles - excludeTitles:
-            pageTitles |= selectPages(title, recursive - 1, joinedExcludeTitles)
+        joinedExcludeCategoryTitles = excludeCategoryTitles | titles
+        joinedExcludePageTitles = excludePageTitles | pageTitles
+        for title in titles - excludeCategoryTitles:
+            pages += selectPages(title, recursive - 1, joinedExcludePageTitles, joinedExcludeCategoryTitles)
 
-    return set(pageTitles)
+    return pages
 
 class DictUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     MySQLdb.cursors.CursorDictRowsMixIn, \
     MySQLdb.cursors.BaseCursor):
     pass
+
+class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
+    MySQLdb.cursors.CursorTupleRowsMixIn, \
+    MySQLdb.cursors.BaseCursor):
+    pass
+
+def selectGenerator(table, cols=[], joins=[], cond='', order=''):
+    _conn = openConn()
+    with _conn:
+        _cur = _conn.cursor(cursorclass=TupleUseResultCursor)
+        sql = """
+            select %s from %s %s
+            """ % (','.join(cols), table, ' '.join(joins))
+        if cond:
+            sql += " where %s " % (cond,)
+        if order:
+            sql += " order by %s " % (order,)
+        _cur.execute(sql)
+        cnt = 0
+        while 1:
+            cnt += 1
+            if cnt % 10 == 0:
+                print(cnt)
+
+            rt = _cur.fetchone()
+            if rt:
+                yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
+            else:
+                break
+        _cur.close()
+
+def allCategoryGenerator():
+    for cols in selectGenerator('category', cols=['cat_id', 'cat_title'], order='cat_id asc'):
+        yield Category(cols[0], cols[1])
 
 def allPageTitlesGenerator():
     _conn = openConn()
@@ -180,7 +240,6 @@ def allInfoDataGenerator():
                 break
         _cur.close()
 
-
 def queryMultiInsert(table, cols, valuesList):
     cur.execute(("""
         insert into %s (%s)
@@ -203,13 +262,29 @@ def buildPageEx():
     infopages = filter(lambda p: p and p.info, pages)
 
     for pageList in chunked(infopages, 100):
-        queryMultiInsert('anadb.page_ex2', ['page_id', 'name', 'infotype', 'infocontent'], \
-            [[p.id, p.title, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
+        queryMultiInsert('anadb.page_ex2', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
+            [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
     conn.commit()
 
 def buildInfoEx():
     for datas in chunked(allInfoDataGenerator(), 100):
-        queryMultiInsert('anadb.info_ex', ['text_id', 'name'], datas)
+        queryMultiInsert('anadb.info_ex2', ['text_id', 'name'], datas)
+
+    conn.commit()
+
+def buildCatInfo():
+    catIter = allCategoryGenerator()
+    for cat in catIter:
+        cur.execute("""
+            select px.infotype, count(*) page_num from categorylinks cl
+            inner join anadb.page_ex px on px.page_id = cl.cl_from
+            where cl.cl_type = 'page' and cl.cl_to = %s
+            group by px.infotype
+            order by px.page_id asc
+            """, (cat.name, ))
+        valuesList = [[cat.id, record['infotype'], record['page_num']] for record in cur.fetchall()]
+        if len(valuesList) > 0:
+            queryMultiInsert('anadb.category_info', ['cat_id', 'infotype', 'page_num'], valuesList)
 
     conn.commit()

@@ -11,10 +11,12 @@ class Page:
     title = ''
     info = False
     text = False
-    def __init__(self, id, title, info):
+    contentlength = 0
+    def __init__(self, id, title, contentlength, info):
         self.title = title
         self.id = id
         self.info = info
+        self.contentlength = contentlength
 
 
         
