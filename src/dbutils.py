@@ -39,9 +39,16 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order=''):
 
         _cur.close()
 
-def allCategoryGenerator(openConn):
-    for cols in selectGenerator(openConn, 'category', cols=['cat_id', 'cat_title'], order='cat_id asc'):
-        yield Category(cols[0], cols[1])
+def allCategoryDataGenerator(openConn):
+    for cols in selectGenerator(openConn, 'category c', \
+            cols=['cat_id', 'cat_title', 't.old_text'], \
+            joins=[ \
+                'inner join page p on p.page_title = c.cat_title and p.page_namespace = 14', \
+                'inner join revision r on r.rev_page = p.page_id', \
+                'inner join text t on t.old_id = r.rev_text_id', \
+            ], \
+            order='cat_id asc'):
+        yield (cols[0], cols[1], cols[2])
 
 def allPageTitlesGenerator(openConn):
     for cols in selectGenerator(openConn, 'page', cols=['page_title'], cond='page_namespace = 0', \

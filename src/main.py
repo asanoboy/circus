@@ -1,8 +1,9 @@
 import MySQLdb
 import json
 from circus_itertools import lazy_chunked as chunked
-from Page import Page, PageInfo
+from models import Page, PageInfo
 from dbutils import *
+from consts import valid_infotypes, valid_categories
 
 def openConn():
     return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
@@ -18,7 +19,8 @@ class Category:
         self.id = id
         self.name = name
 
-def bracketTextGenerator(text):
+def getBracketTexts(text):
+    result = []
     currentPos = 0
     startPos = -1
     depth = 0
@@ -36,7 +38,7 @@ def bracketTextGenerator(text):
                 if depth != 1:
                     raise 'Too many "}}" at last'
                     break
-                yield text[startPos+2: nextEndPos]
+                result.append( text[startPos+2: nextEndPos] )
                 break
             else: # exists both {{ and }}
                 if nextStartPos < nextEndPos:
@@ -51,7 +53,7 @@ def bracketTextGenerator(text):
                     elif depth==1:
                         if startPos == -1:
                             raise 'Invalid'
-                        yield text[startPos+2: nextEndPos]
+                        result.append( text[startPos+2: nextEndPos] )
                         startPos = -1
                     depth -= 1
                     currentPos = nextEndPos + 2
@@ -59,8 +61,9 @@ def bracketTextGenerator(text):
     except:
         print("Can't parse wiki text.")
         pass # workaround
+    return result
 
-def createPageInfoByBracketText(text, allowedNames):
+def createPageInfoByBracketText(text, allowedNames=False):
     pos = text.find('|')
     if pos == -1: 
         return False
@@ -79,7 +82,7 @@ def createPageInfoByBracketText(text, allowedNames):
     return PageInfo(name, keyValue)
     
 def createPageInfoByPageWikiText(text, allowedNames):
-    bracketTexts = bracketTextGenerator(text)
+    bracketTexts = getBracketTexts(text)
     infos = [createPageInfoByBracketText(t, allowedNames) for t in bracketTexts]
     infos = [i for i in infos if i]
     if len(infos) == 0:
@@ -154,6 +157,20 @@ def selectAllInfoNames():
     """)
     return [record['name'] for record in cur.fetchall()]
 
+def createCategoryWithoutStub(data):
+    id = data[0]
+    title = data[1]
+    text = data[2]
+    bracketTexts = getBracketTexts(text)
+    infos = [createPageInfoByBracketText(t) for t in bracketTexts]
+    infos = [i for i in infos if i]
+    if len(infos)>0 and infos[0].name.lower().find('stub') != -1:
+        return False
+    elif text.find('__HIDDENCAT__') != -1 or text.lower().find('hiddencat}}') != -1:
+        return False
+    else:
+        return Category(id, title)
+
 def buildPageEx():
     allowedInfoNames = selectAllInfoNames()
     pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
@@ -170,9 +187,19 @@ def buildInfoEx():
         queryMultiInsert(cur, 'anadb.info_ex', ['text_id', 'name'], datas)
 
     conn.commit()
+    updateInfoFeatured()
 
-def buildCatInfo():
-    catIter = allCategoryGenerator(openConn)
+def updateInfoFeatured():
+    cur.execute("""
+        update anadb.info_ex
+        set featured = case when %s then 1 else 0 end
+        """ % (' or '.join(['name = %s'] * len(valid_infotypes)), ), \
+        set(valid_infotypes))
+    conn.commit()
+
+def buildCatInfo(table='anadb.category_info'):
+    catDataIter = allCategoryDataGenerator(openConn)
+    catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
     for cat in catIter:
         cur.execute("""
             select px.infotype, count(*) page_num from categorylinks cl
@@ -183,8 +210,15 @@ def buildCatInfo():
             """, (cat.name, ))
         valuesList = [[cat.id, record['infotype'], record['page_num']] for record in cur.fetchall()]
         if len(valuesList) > 0:
-            queryMultiInsert(cur, 'anadb.category_info', ['cat_id', 'infotype', 'page_num'], valuesList)
+            queryMultiInsert(cur, table, ['cat_id', 'infotype', 'page_num'], valuesList)
 
     conn.commit()
+    updateCatInfoFeatured(table)
 
-
+def updateCatInfoFeatured(table='anadb.category_info'):
+    cur.execute("""
+        update %s
+        set featured = case when %s then 1 else 0 end
+        """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), ), \
+        set(valid_infotypes))
+    conn.commit()
