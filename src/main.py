@@ -1,8 +1,8 @@
 import MySQLdb
 import json
 from circus_itertools import lazy_chunked as chunked
-from itertools import chain
 from Page import Page, PageInfo
+from dbutils import *
 
 def openConn():
     return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
@@ -59,8 +59,6 @@ def bracketTextGenerator(text):
     except:
         print("Can't parse wiki text.")
         pass # workaround
-
-
 
 def createPageInfoByBracketText(text, allowedNames):
     pos = text.find('|')
@@ -150,78 +148,6 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
 
     return pages
 
-class DictUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
-    MySQLdb.cursors.CursorDictRowsMixIn, \
-    MySQLdb.cursors.BaseCursor):
-    pass
-
-class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
-    MySQLdb.cursors.CursorTupleRowsMixIn, \
-    MySQLdb.cursors.BaseCursor):
-    pass
-
-def selectGenerator(table, cols=[], joins=[], cond='', order=''):
-    _conn = openConn()
-    with _conn:
-        _cur = _conn.cursor(cursorclass=TupleUseResultCursor)
-        sql = """
-            select %s from %s %s
-            """ % (','.join(cols), table, ' '.join(joins))
-        if cond:
-            sql += " where %s " % (cond,)
-        if order:
-            sql += " order by %s " % (order,)
-
-        _cur.execute(sql)
-        cnt = 0
-        while 1:
-            cnt += 1
-            if cnt % 100 == 0:
-                print(cnt)
-                pass
-
-            rt = _cur.fetchone()
-            if rt:
-                yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
-            else:
-                break
-
-        _cur.close()
-
-def allCategoryGenerator():
-    for cols in selectGenerator('category', cols=['cat_id', 'cat_title'], order='cat_id asc'):
-        yield Category(cols[0], cols[1])
-
-def allPageTitlesGenerator():
-    for cols in selectGenerator('page', cols=['page_title'], cond='page_namespace = 0', \
-            order='page_title asc'):
-        yield cols[0]
-
-def allInfoDataGenerator():
-    for cols in selectGenerator('page p', \
-            joins=[\
-                'inner join revision r on r.rev_page = p.page_id', \
-                'inner join text t on t.old_id = r.rev_text_id' \
-            ], \
-            cols=['p.page_title', 't.old_text','t.old_id'], \
-            cond='page_namespace = 10', \
-            order='p.page_title asc'):
-
-        if not cols[0].lower().startswith('infobox') \
-                and cols[1].lower().find('infobox') == -1:
-            continue
-        yield (cols[2], cols[0])
-
-def queryMultiInsert(table, cols, valuesList):
-    cur.execute(("""
-        insert into %s (%s)
-        values
-        """ % (table, ','.join(cols))) \
-        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList)), \
-        tuple(chain.from_iterable(valuesList)) \
-    )
-    pass
-
 def selectAllInfoNames():
     cur.execute("""
         select name from anadb.info_ex
@@ -230,23 +156,23 @@ def selectAllInfoNames():
 
 def buildPageEx():
     allowedInfoNames = selectAllInfoNames()
-    pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator())
+    pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
     infopages = filter(lambda p: p and p.info, pages)
 
     for pageList in chunked(infopages, 100):
-        queryMultiInsert('anadb.page_ex2', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
+        queryMultiInsert(cur, 'anadb.page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
     conn.commit()
 
 def buildInfoEx():
-    for datas in chunked(allInfoDataGenerator(), 100):
-        queryMultiInsert('anadb.info_ex2', ['text_id', 'name'], datas)
+    for datas in chunked(allInfoDataGenerator(openConn), 100):
+        queryMultiInsert(cur, 'anadb.info_ex', ['text_id', 'name'], datas)
 
     conn.commit()
 
 def buildCatInfo():
-    catIter = allCategoryGenerator()
+    catIter = allCategoryGenerator(openConn)
     for cat in catIter:
         cur.execute("""
             select px.infotype, count(*) page_num from categorylinks cl
@@ -257,6 +183,8 @@ def buildCatInfo():
             """, (cat.name, ))
         valuesList = [[cat.id, record['infotype'], record['page_num']] for record in cur.fetchall()]
         if len(valuesList) > 0:
-            queryMultiInsert('anadb.category_info', ['cat_id', 'infotype', 'page_num'], valuesList)
+            queryMultiInsert(cur, 'anadb.category_info', ['cat_id', 'infotype', 'page_num'], valuesList)
 
     conn.commit()
+
+
