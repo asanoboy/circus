@@ -19,6 +19,7 @@ CREATE TABLE `category_info` (
     `cat_id` int(11) NOT NULL,
     `infotype` varchar(255) binary NOT NULL,
     `page_num` int(11) NOT NULL,
+    parent int null default null,
     featured tinyint not null default 0,
     PRIMARY KEY (`cat_id`,`infotype`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

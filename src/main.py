@@ -5,6 +5,7 @@ from circus_itertools import lazy_chunked as chunked
 from models import Page, PageInfo
 from dbutils import *
 from consts import valid_infotypes, valid_categories
+from numerical import *
 
 class Category:
     id = False
@@ -275,7 +276,42 @@ def updateCatInfoFeatured(table='anadb.category_info'):
         set(valid_infotypes))
     conn.commit()
 
+def updateCategoryRelationsByInfotype(infotype):
+    pageIds = [] 
+    indexOfPageId = {}
+    catIds = []
+    indexOfCatId = {}
+    for cols in allCategoryPageByInfotype(openConn, infotype):
+        catId = cols[0]
+        pageId = cols[1]
+        if pageId not in pageIds:
+            pageIds.append(pageId)
+            indexOfPageId[pageId] = len(pageIds) - 1
+        if catId not in catIds:
+            catIds.append(catId)
+            indexOfCatId[catId] = len(catIds) - 1
+
+    def categoryPageRelationGenerator():
+        currentCatId = None
+        currentRelation = [0] * len(pageIds)
+        for cols in allCategoryPageByInfotype(openConn, infotype):
+            catId = cols[0]
+            pageId = cols[1]
+            if currentCatId is not None and currentCatId != catId:
+                yield currentRelation
+                currentRelation = [0] * len(pageIds)
+                currentCatId = catId
+            currentRelation[indexOfPageId[pageId]] = 1
+        yield currentRelation
+
+    childParent = getCategoryRelationship(categoryPageRelationGenerator(), len(catIds), len(pageIds))
+    return [ (catIds[childCatIndex], catIds[parentCatIndex]) for childCatIndex, parentCatIndex in childParent.items()]
+
+def updateAllCategoryRelations():
+    return map(updateCategoryRelationsByInfotype, valid_infotypes)
+
 if __name__ == '__main__':
-    buildInfoEx()
-    buildPageEx()
-    buildCatInfo()
+    #buildInfoEx()
+    #buildPageEx()
+    #buildCatInfo()
+    pass

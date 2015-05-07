@@ -11,7 +11,7 @@ class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     MySQLdb.cursors.BaseCursor):
     pass
 
-def selectGenerator(openConn, table, cols=[], joins=[], cond='', order=''):
+def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set()):
     _conn = openConn()
     with _conn:
         _cur = _conn.cursor(cursorclass=TupleUseResultCursor)
@@ -23,12 +23,13 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order=''):
         if order:
             sql += " order by %s " % (order,)
 
-        _cur.execute(sql)
+        #print(sql)
+        _cur.execute(sql, arg)
         cnt = 0
         while 1:
             cnt += 1
             if cnt % 100 == 0:
-                print(cnt)
+                #print(cnt)
                 pass
 
             rt = _cur.fetchone()
@@ -73,6 +74,18 @@ def allInfoDataGenerator(openConn):
 def allInfoRecordGenerator(openConn):
     for cols in selectGenerator(openConn, 'anadb.info_ex', cols=['text_id', 'name'], order='text_id asc'):
         yield {'text_id':cols[0], 'name':cols[1]}
+
+def allCategoryPageByInfotype(openConn, infotype):
+    for cols in selectGenerator(openConn, 'anadb.page_ex p', \
+            cols=['c.cat_id', 'p.page_id'], \
+            joins=[\
+                'inner join wikidb.categorylinks cl on cl.cl_from = p.page_id', \
+                'inner join wikidb.category c on c.cat_title = cl.cl_to', \
+                'inner join anadb.category_info ci on ci.cat_id = c.cat_id and ci.infotype = p.infotype', \
+            ],\
+            cond='ci.featured = 1 and p.infotype = %s',\
+            order='c.cat_id asc, p.page_id asc', arg=(infotype,)):
+        yield cols
 
 def queryMultiInsert(cur, table, cols, valuesList):
     cur.execute(("""
