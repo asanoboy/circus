@@ -10,14 +10,6 @@ def openConn():
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
-class Category:
-    id = False
-    name = False
-
-    def __init__(self, id, name):
-        self.id = id
-        self.name = name
-
 def bracketTextGenerator(text):
     currentPos = 0
     startPos = -1
@@ -85,9 +77,23 @@ def createPageInfoByPageWikiText(text, allowedNames):
     if len(infos) == 0:
         return False
     if len(infos) == 1:
-        return infos[0]
+        info = infos[0]
     else:
-        return infos[0] # Apply first info.
+        info = infos[0] # Apply first info.
+
+    while 1:
+        cur.execute("""
+            select ito.name from anadb.info_ex ifrom
+            inner join anadb.info_ex ito on ifrom.redirect_to = ito.text_id
+            where ifrom.name = %s
+        """, (info.name,))
+        res = cur.fetchall()
+        if len(res) == 1:
+            info.name = res[0]['name']
+            continue
+        else:
+            break
+    return info
 
 def selectTextByTitle(title, namespace):
     cur.execute("""
@@ -157,9 +163,9 @@ def selectAllInfoNames():
 def buildPageEx():
     allowedInfoNames = selectAllInfoNames()
     pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
-    infopages = filter(lambda p: p and p.info, pages)
+    pages = filter(lambda p: p and p.info, pages)
 
-    for pageList in chunked(infopages, 100):
+    for pageList in chunked(pages, 100):
         queryMultiInsert(cur, 'anadb.page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 

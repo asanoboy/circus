@@ -1,5 +1,6 @@
 import MySQLdb.cursors
 from itertools import chain
+from Page import *
 
 class DictUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     MySQLdb.cursors.CursorDictRowsMixIn, \
