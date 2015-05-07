@@ -1,4 +1,12 @@
 
+class Category:
+    id = False
+    name = False
+
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
 class PageInfo:
     name = False
     keyValue = {}

@@ -1,15 +1,10 @@
 import MySQLdb
 import json
+import re
 from circus_itertools import lazy_chunked as chunked
 from models import Page, PageInfo
 from dbutils import *
 from consts import valid_infotypes, valid_categories
-
-def openConn():
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
-
-conn = openConn()
-cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
 class Category:
     id = False
@@ -18,6 +13,12 @@ class Category:
     def __init__(self, id, name):
         self.id = id
         self.name = name
+
+def openConn():
+    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
+
+conn = openConn()
+cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
 def getBracketTexts(text):
     result = []
@@ -88,9 +89,23 @@ def createPageInfoByPageWikiText(text, allowedNames):
     if len(infos) == 0:
         return False
     if len(infos) == 1:
-        return infos[0]
+        info = infos[0]
     else:
-        return infos[0] # Apply first info.
+        info = infos[0] # Apply first info.
+
+    while 1:
+        cur.execute("""
+            select ito.name from anadb.info_ex ifrom
+            inner join anadb.info_ex ito on ifrom.redirect_to = ito.text_id
+            where ifrom.name = %s
+        """, (info.name,))
+        res = cur.fetchall()
+        if len(res) == 1:
+            info.name = res[0]['name']
+            continue
+        else:
+            break
+    return info
 
 def selectTextByTitle(title, namespace):
     cur.execute("""
@@ -174,9 +189,9 @@ def createCategoryWithoutStub(data):
 def buildPageEx():
     allowedInfoNames = selectAllInfoNames()
     pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
-    infopages = filter(lambda p: p and p.info, pages)
+    pages = filter(lambda p: p and p.info, pages)
 
-    for pageList in chunked(infopages, 100):
+    for pageList in chunked(pages, 100):
         queryMultiInsert(cur, 'anadb.page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
@@ -188,6 +203,7 @@ def buildInfoEx():
 
     conn.commit()
     updateInfoFeatured()
+    updateInfoRedirect()
 
 def updateInfoFeatured():
     cur.execute("""
@@ -195,6 +211,42 @@ def updateInfoFeatured():
         set featured = case when %s then 1 else 0 end
         """ % (' or '.join(['name = %s'] * len(valid_infotypes)), ), \
         set(valid_infotypes))
+    conn.commit()
+
+def updateInfoRedirect():
+    infoRecordIter = allInfoRecordGenerator(openConn)
+    p = re.compile('#redirect\s*\[\[(template:)?\s*(.+)\]\]', re.IGNORECASE)
+    for infoRecord in infoRecordIter:
+        infoName = infoRecord['name']
+        text = selectTextByTitle(infoName, 10)
+        m = p.search(text)
+        if m:
+            redirectName = m.group(2).replace(' ', '_')
+            cur.execute("""
+                select text_id from anadb.info_ex where name = %s
+            """, (redirectName,))
+            result = cur.fetchall()
+
+            if len(result) == 0:
+                cur.execute("""
+                    select text_id from anadb.info_ex where lower(name) = lower(%s)
+                """, (redirectName,))
+                result = cur.fetchall()
+                
+            if len(result) == 1:
+                redirectTo = result[0]['text_id']
+                cur.execute("""
+                    update anadb.info_ex set redirect_to = %s
+                    where text_id = %s
+                """, (redirectTo, infoRecord['text_id']))
+            else:
+                print( 'Invalid redirect from %s to %s' % (infoName, redirectName) )
+
+        else:
+            if text.lower().startswith('#redirect') :
+                msg = 'Missing to parse redirect info "%s".' % (text,)
+                print(msg)
+                raise Exception(msg)
     conn.commit()
 
 def buildCatInfo(table='anadb.category_info'):
@@ -222,3 +274,8 @@ def updateCatInfoFeatured(table='anadb.category_info'):
         """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), ), \
         set(valid_infotypes))
     conn.commit()
+
+if __name__ == '__main__':
+    buildInfoEx()
+    buildPageEx()
+    buildCatInfo()

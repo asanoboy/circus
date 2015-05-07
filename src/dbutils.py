@@ -70,6 +70,10 @@ def allInfoDataGenerator(openConn):
             continue
         yield (cols[2], cols[0])
 
+def allInfoRecordGenerator(openConn):
+    for cols in selectGenerator(openConn, 'anadb.info_ex', cols=['text_id', 'name'], order='text_id asc'):
+        yield {'text_id':cols[0], 'name':cols[1]}
+
 def queryMultiInsert(cur, table, cols, valuesList):
     cur.execute(("""
         insert into %s (%s)
