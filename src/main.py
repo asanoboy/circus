@@ -2,68 +2,17 @@ import MySQLdb
 import json
 import re
 from circus_itertools import lazy_chunked as chunked
-from models import Page, PageInfo
+from models import *
 from dbutils import *
 from consts import valid_infotypes, valid_categories
 from numerical import *
-
-class Category:
-    id = False
-    name = False
-
-    def __init__(self, id, name):
-        self.id = id
-        self.name = name
+from parser import *
 
 def openConn():
     return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
 
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-
-def getBracketTexts(text):
-    result = []
-    currentPos = 0
-    startPos = -1
-    depth = 0
-    nextStartPos = text.find("{{", currentPos)
-    nextEndPos = text.find("}}", currentPos)
-    try:
-        while 1:
-            if nextStartPos == -1 and nextEndPos == -1:
-                if depth != 0:
-                    raise 'Unclosed info bracket.'
-                break
-            elif nextEndPos == -1: # exists only {{
-                raise 'Unclosed info bracket.'
-            elif nextStartPos == -1: # exists only }}
-                if depth != 1:
-                    raise 'Too many "}}" at last'
-                    break
-                result.append( text[startPos+2: nextEndPos] )
-                break
-            else: # exists both {{ and }}
-                if nextStartPos < nextEndPos:
-                    if depth==0:
-                        startPos = nextStartPos
-                    depth += 1
-                    currentPos = nextStartPos + 2
-                    nextStartPos = text.find("{{", currentPos)
-                else:
-                    if depth==0:
-                        raise 'Too many "}}"'
-                    elif depth==1:
-                        if startPos == -1:
-                            raise 'Invalid'
-                        result.append( text[startPos+2: nextEndPos] )
-                        startPos = -1
-                    depth -= 1
-                    currentPos = nextEndPos + 2
-                    nextEndPos = text.find("}}", currentPos)
-    except:
-        print("Can't parse wiki text.")
-        pass # workaround
-    return result
 
 def createPageInfoByBracketText(text, allowedNames=False):
     pos = text.find('|')
@@ -137,11 +86,6 @@ def createPageByTitle(title, allowedInfoNames=False):
     else:
         return False 
 
-def createFunctionPageByTitle(allowedInfoNames):
-    def createPageInternal(title):
-        return createPageByTitle(title, allowedInfoNames)
-    return createPageInternal
-
 def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryTitles=set()):
     cur.execute("""
         select p.page_title title from categorylinks cl 
@@ -188,6 +132,11 @@ def createCategoryWithoutStub(data):
         return Category(id, title)
 
 def buildPageEx():
+    def createFunctionPageByTitle(allowedInfoNames):
+        def createPageInternal(title):
+            return createPageByTitle(title, allowedInfoNames)
+        return createPageInternal
+
     allowedInfoNames = selectAllInfoNames()
     pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
     pages = filter(lambda p: p and p.info, pages)
