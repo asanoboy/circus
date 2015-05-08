@@ -79,6 +79,7 @@ def createPageByTitle(title, allowedInfoNames=False):
     res = cur.fetchall()
     if len(res) > 0:
         text = res[0]['wiki'].decode('utf-8')
+        text = removeComment(text)
         info = createPageInfoByPageWikiText(text, allowedInfoNames)
         if not info:
             return False
@@ -324,6 +325,10 @@ def buildTreeNode(clean=False):
 
 if __name__ == '__main__':
     #buildInfoEx()
+    buildCatInfo()
     #buildPageEx()
-    #buildCatInfo()
+    #buildNodeByPage()
+    buildNodeByCategory()
+    buildFeatureNode()
+
     pass
