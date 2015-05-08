@@ -23,13 +23,13 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
         if order:
             sql += " order by %s " % (order,)
 
-        #print(sql)
+        print(sql)
         _cur.execute(sql, arg)
         cnt = 0
         while 1:
             cnt += 1
             if cnt % 100 == 0:
-                #print(cnt)
+                print(cnt)
                 pass
 
             rt = _cur.fetchone()
@@ -75,9 +75,9 @@ def allInfoRecordGenerator(openConn):
     for cols in selectGenerator(openConn, 'anadb.info_ex', cols=['text_id', 'name'], order='text_id asc'):
         yield {'text_id':cols[0], 'name':cols[1]}
 
-def allFeaturedPageGenerator(openConn):
+def allFeaturedPageGenerator(openConn, dictFormat=False):
     for cols in selectGenerator(openConn, 'anadb.page_ex p', \
-            cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id'], \
+            cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id', 'p.infotype'], \
             joins=[\
                 'inner join anadb.info_ex i on i.name = p.infotype', \
                 'left join anadb.page_node_relation pr on pr.page_id = p.page_id', \
@@ -85,7 +85,10 @@ def allFeaturedPageGenerator(openConn):
             ], \
             cond='i.featured = 1', \
             order='p.page_id asc'):
-        yield cols
+        if dictFormat:
+            yield dict(zip(['page_id', 'name', 'relation_ndoe_id', 'node_id', 'infotype'], cols))
+        else:
+            yield cols
 
 def allFeaturedCategoryGenerator(openConn):
     for cols in selectGenerator(openConn, 'anadb.category_info ci', \

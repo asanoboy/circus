@@ -41,7 +41,7 @@ create table feature_node_relation (
     feature_node_id int NOT NULL,
     node_id int NOT NULL,
     weight float NOT NULL,
-    PRIMARY KEY(feature_node_id),
+    PRIMARY KEY(feature_node_id, node_id),
     INDEX node_to(node_id)
 );
 

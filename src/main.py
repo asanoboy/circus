@@ -289,14 +289,36 @@ def _buildNodeInternal(generator, table, idCol):
     conn.commit()
 
 def buildNodeByPage():
-    return _buildNodeInternal(allFeaturedPageGenerator, 'page_node_relation', 'page_id')
+    _buildNodeInternal(allFeaturedPageGenerator, 'page_node_relation', 'page_id')
 
 def buildNodeByCategory():
-    return _buildNodeInternal(allFeaturedCategoryGenerator, 'category_node_relation', 'cat_id')
+    _buildNodeInternal(allFeaturedCategoryGenerator, 'category_node_relation', 'cat_id')
 
-def buildFeatureNode(clean=False):
-    pass
+def pageLinkGeneratorWithSameInfotype(pageIterator):
+    for cols in pageIterator:
+        infotype = cols['infotype']
+        pageId = cols['page_id']
+        name = cols['name']
+        cur.execute("""
+            select pr_from.node_id node_from, pr_to.node_id node_to from pagelinks pl
+            inner join page p on pl.pl_title = p.page_title and p.page_namespace = 0
+            inner join anadb.page_ex px on px.page_id = p.page_id and px.infotype = %s
+            inner join anadb.page_node_relation pr_from on pr_from.page_id = pl.pl_from
+            inner join anadb.page_node_relation pr_to on pr_to.page_id = p.page_id
+            where pl.pl_namespace = 0 and pl.pl_from = %s
+        """, (infotype, pageId))
+        records = cur.fetchall()
+        for record in records:
+            yield {'node_id_from': record['node_from'], 'node_id_to': record['node_to'], 'weight': 1.0 / len(records)}
 
+def buildFeatureNode():
+    pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
+    for links in chunked(pageLinkGeneratorWithSameInfotype(pageIter), 1000):
+        queryMultiInsert(cur, 'anadb.feature_node_relation', \
+            ['feature_node_id', 'node_id', 'weight'], \
+            [ [r['node_id_from'], r['node_id_to'], r['weight']] for r in links] )
+    conn.commit()
+    
 def buildTreeNode(clean=False):
     pass # later
 
