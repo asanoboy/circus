@@ -9,7 +9,7 @@ from numerical import *
 from parser import *
 
 def openConn():
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="wikidb", charset='utf8')
+    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="anadb2", charset='utf8')
 
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -45,8 +45,8 @@ def createPageInfoByPageWikiText(text, allowedNames):
 
     while 1:
         cur.execute("""
-            select ito.name from anadb.info_ex ifrom
-            inner join anadb.info_ex ito on ifrom.redirect_to = ito.text_id
+            select ito.name from info_ex ifrom
+            inner join info_ex ito on ifrom.redirect_to = ito.text_id
             where ifrom.name = %s
         """, (info.name,))
         res = cur.fetchall()
@@ -59,9 +59,9 @@ def createPageInfoByPageWikiText(text, allowedNames):
 
 def selectTextByTitle(title, namespace):
     cur.execute("""
-        select t.old_text wiki, p.page_id id from page p 
-        inner join revision r on r.rev_page = p.page_id
-        inner join text t on t.old_id = r.rev_text_id
+        select t.old_text wiki, p.page_id id from wikidb.page p 
+        inner join wikidb.revision r on r.rev_page = p.page_id
+        inner join wikidb.text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = %s
         """, (title, namespace))
     res = cur.fetchall()
@@ -71,9 +71,9 @@ def selectTextByTitle(title, namespace):
 
 def createPageByTitle(title, allowedInfoNames=False):
     cur.execute("""
-        select t.old_text wiki, p.page_id id from page p 
-        inner join revision r on r.rev_page = p.page_id
-        inner join text t on t.old_id = r.rev_text_id
+        select t.old_text wiki, p.page_id id from wikidb.page p 
+        inner join wikidb.revision r on r.rev_page = p.page_id
+        inner join wikidb.text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = 0
         """, (title,))
     res = cur.fetchall()
@@ -89,8 +89,8 @@ def createPageByTitle(title, allowedInfoNames=False):
 
 def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryTitles=set()):
     cur.execute("""
-        select p.page_title title from categorylinks cl 
-        inner join page p on cl.cl_from = p.page_id
+        select p.page_title title from wikidb.categorylinks cl 
+        inner join wikidb.page p on cl.cl_from = p.page_id
         where cl.cl_to=%s and cl_type = "page"
         """, (catTitle,))
     res = cur.fetchall()
@@ -100,8 +100,8 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
 
     if recursive:
         cur.execute("""
-            select p.page_title title from categorylinks cl 
-            inner join page p on cl.cl_from = p.page_id
+            select p.page_title title from wikidb.categorylinks cl 
+            inner join wikidb.page p on cl.cl_from = p.page_id
             where cl.cl_to=%s and cl_type = "subcat"
             """, (catTitle,))
         titles = set([record['title'].decode('utf-8') for record in cur.fetchall()])
@@ -114,7 +114,7 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
 
 def selectAllInfoNames():
     cur.execute("""
-        select name from anadb.info_ex
+        select name from info_ex
     """)
     return [record['name'] for record in cur.fetchall()]
 
@@ -143,14 +143,14 @@ def buildPageEx():
     pages = filter(lambda p: p and p.info, pages)
 
     for pageList in chunked(pages, 100):
-        queryMultiInsert(cur, 'anadb.page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
+        queryMultiInsert(cur, 'page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
     conn.commit()
 
 def buildInfoEx():
     for datas in chunked(allInfoDataGenerator(openConn), 100):
-        queryMultiInsert(cur, 'anadb.info_ex', ['text_id', 'name'], datas)
+        queryMultiInsert(cur, 'info_ex', ['text_id', 'name'], datas)
 
     conn.commit()
     updateInfoFeatured()
@@ -158,7 +158,7 @@ def buildInfoEx():
 
 def updateInfoFeatured():
     cur.execute("""
-        update anadb.info_ex
+        update info_ex
         set featured = case when %s then 1 else 0 end
         """ % (' or '.join(['name = %s'] * len(valid_infotypes)), ), \
         set(valid_infotypes))
@@ -174,20 +174,20 @@ def updateInfoRedirect():
         if m:
             redirectName = m.group(2).replace(' ', '_')
             cur.execute("""
-                select text_id from anadb.info_ex where name = %s
+                select text_id from info_ex where name = %s
             """, (redirectName,))
             result = cur.fetchall()
 
             if len(result) == 0:
                 cur.execute("""
-                    select text_id from anadb.info_ex where lower(name) = lower(%s)
+                    select text_id from info_ex where lower(name) = lower(%s)
                 """, (redirectName,))
                 result = cur.fetchall()
                 
             if len(result) == 1:
                 redirectTo = result[0]['text_id']
                 cur.execute("""
-                    update anadb.info_ex set redirect_to = %s
+                    update info_ex set redirect_to = %s
                     where text_id = %s
                 """, (redirectTo, infoRecord['text_id']))
             else:
@@ -200,13 +200,13 @@ def updateInfoRedirect():
                 raise Exception(msg)
     conn.commit()
 
-def buildCatInfo(table='anadb.category_info'):
+def buildCatInfo(table='category_info'):
     catDataIter = allCategoryDataGenerator(openConn)
     catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
     for cat in catIter:
         cur.execute("""
-            select px.infotype, count(*) page_num from categorylinks cl
-            inner join anadb.page_ex px on px.page_id = cl.cl_from
+            select px.infotype, count(*) page_num from wikidb.categorylinks cl
+            inner join page_ex px on px.page_id = cl.cl_from
             where cl.cl_type = 'page' and cl.cl_to = %s
             group by px.infotype
             order by px.page_id asc
@@ -218,7 +218,7 @@ def buildCatInfo(table='anadb.category_info'):
     conn.commit()
     updateCatInfoFeatured(table)
 
-def updateCatInfoFeatured(table='anadb.category_info'):
+def updateCatInfoFeatured(table='category_info'):
     cur.execute("""
         update %s
         set featured = case when %s then 1 else 0 end
@@ -261,7 +261,7 @@ def updateAllCategoryRelations():
     return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
 def maxNodeId():
-    cur.execute('select max(node_id) max from anadb.node')
+    cur.execute('select max(node_id) max from node')
     rs = cur.fetchone()
     return rs['max'] if rs['max'] is not None else 0
 
@@ -283,9 +283,9 @@ def _buildNodeInternal(generator, table, idCol):
                 nodeValues.append([relationNodeId, name])
 
         if len(relationValues):
-            queryMultiInsert(cur, 'anadb.%s' % (table,), [idCol, 'node_id'], relationValues)
+            queryMultiInsert(cur, '%s' % (table,), [idCol, 'node_id'], relationValues)
         if len(nodeValues):
-            queryMultiInsert(cur, 'anadb.node', ['node_id', 'name'], nodeValues)
+            queryMultiInsert(cur, 'node', ['node_id', 'name'], nodeValues)
 
     conn.commit()
 
@@ -301,11 +301,11 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
         pageId = cols['page_id']
         name = cols['name']
         cur.execute("""
-            select pr_from.node_id node_from, pr_to.node_id node_to from pagelinks pl
-            inner join page p on pl.pl_title = p.page_title and p.page_namespace = 0
-            inner join anadb.page_ex px on px.page_id = p.page_id and px.infotype = %s
-            inner join anadb.page_node_relation pr_from on pr_from.page_id = pl.pl_from
-            inner join anadb.page_node_relation pr_to on pr_to.page_id = p.page_id
+            select pr_from.node_id node_from, pr_to.node_id node_to from wikidb.pagelinks pl
+            inner join wikidb.page p on pl.pl_title = p.page_title and p.page_namespace = 0
+            inner join page_ex px on px.page_id = p.page_id and px.infotype = %s
+            inner join page_node_relation pr_from on pr_from.page_id = pl.pl_from
+            inner join page_node_relation pr_to on pr_to.page_id = p.page_id
             where pl.pl_namespace = 0 and pl.pl_from = %s
         """, (infotype, pageId))
         records = cur.fetchall()
@@ -314,8 +314,8 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
 
 def buildFeatureNode():
     pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
-    for links in chunked(pageLinkGeneratorWithSameInfotype(pageIter), 1000):
-        queryMultiInsert(cur, 'anadb.feature_node_relation', \
+    for i, links in enumerate(chunked(pageLinkGeneratorWithSameInfotype(pageIter), 100)):
+        queryMultiInsert(cur, 'feature_node_relation', \
             ['feature_node_id', 'node_id', 'weight'], \
             [ [r['node_id_from'], r['node_id_to'], r['weight']] for r in links] )
     conn.commit()
@@ -325,10 +325,10 @@ def buildTreeNode(clean=False):
 
 if __name__ == '__main__':
     #buildInfoEx()
-    buildCatInfo()
+    #buildCatInfo()
     #buildPageEx()
     #buildNodeByPage()
-    buildNodeByCategory()
+    #buildNodeByCategory()
     buildFeatureNode()
 
     pass
