@@ -75,6 +75,30 @@ def allInfoRecordGenerator(openConn):
     for cols in selectGenerator(openConn, 'anadb.info_ex', cols=['text_id', 'name'], order='text_id asc'):
         yield {'text_id':cols[0], 'name':cols[1]}
 
+def allFeaturedPageGenerator(openConn):
+    for cols in selectGenerator(openConn, 'anadb.page_ex p', \
+            cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id'], \
+            joins=[\
+                'inner join anadb.info_ex i on i.name = p.infotype', \
+                'left join anadb.page_node_relation pr on pr.page_id = p.page_id', \
+                'left join anadb.node n on n.node_id = pr.node_id', \
+            ], \
+            cond='i.featured = 1', \
+            order='p.page_id asc'):
+        yield cols
+
+def allFeaturedCategoryGenerator(openConn):
+    for cols in selectGenerator(openConn, 'anadb.category_info ci', \
+            cols=['ci.cat_id', 'c.cat_title', 'cr.node_id', 'n.node_id'], \
+            joins=[\
+                'inner join wikidb.category c on c.cat_id = ci.cat_id', \
+                'left join anadb.category_node_relation cr on cr.cat_id = ci.cat_id', \
+                'left join anadb.node n on n.node_id = cr.node_id', \
+            ], \
+            cond='ci.featured = 1', \
+            order='ci.cat_id asc'):
+        yield cols
+
 def allCategoryPageByInfotype(openConn, infotype):
     for cols in selectGenerator(openConn, 'anadb.page_ex p', \
             cols=['c.cat_id', 'p.page_id'], \

@@ -259,6 +259,47 @@ def updateCategoryRelationsByInfotype(infotype):
 def updateAllCategoryRelations():
     return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
+def maxNodeId():
+    cur.execute('select max(node_id) max from anadb.node')
+    rs = cur.fetchone()
+    return rs['max'] if rs['max'] is not None else 0
+
+def _buildNodeInternal(generator, table, idCol):
+    nextNodeId = maxNodeId() + 1
+    for records in chunked(generator(openConn), 100):
+        relationValues = []
+        nodeValues = []
+        for cols in records:
+            pageId = cols[0]
+            name = cols[1]
+            relationNodeId = cols[2]
+            nodeId = cols[3]
+            if relationNodeId is None:
+                relationValues.append([pageId, nextNodeId])
+                nodeValues.append([nextNodeId, name])
+                nextNodeId += 1
+            elif nodeId is None:
+                nodeValues.append([relationNodeId, name])
+
+        if len(relationValues):
+            queryMultiInsert(cur, 'anadb.%s' % (table,), [idCol, 'node_id'], relationValues)
+        if len(nodeValues):
+            queryMultiInsert(cur, 'anadb.node', ['node_id', 'name'], nodeValues)
+
+    conn.commit()
+
+def buildNodeByPage():
+    return _buildNodeInternal(allFeaturedPageGenerator, 'page_node_relation', 'page_id')
+
+def buildNodeByCategory():
+    return _buildNodeInternal(allFeaturedCategoryGenerator, 'category_node_relation', 'cat_id')
+
+def buildFeatureNode(clean=False):
+    pass
+
+def buildTreeNode(clean=False):
+    pass # later
+
 if __name__ == '__main__':
     #buildInfoEx()
     #buildPageEx()
