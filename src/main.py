@@ -301,7 +301,7 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
         pageId = cols['page_id']
         name = cols['name']
         cur.execute("""
-            select pr_from.node_id node_from, pr_to.node_id node_to from wikidb.pagelinks pl
+            select pl.pl_title name, pr_from.node_id node_from, pr_to.node_id node_to from wikidb.pagelinks pl
             inner join wikidb.page p on pl.pl_title = p.page_title and p.page_namespace = 0
             inner join page_ex px on px.page_id = p.page_id and px.infotype = %s
             inner join page_node_relation pr_from on pr_from.page_id = pl.pl_from
@@ -309,8 +309,14 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
             where pl.pl_namespace = 0 and pl.pl_from = %s
         """, (infotype, pageId))
         records = cur.fetchall()
+        content = selectTextByTitle(name, 0)
+        content = removeComment(content)
         for record in records:
-            yield {'node_id_from': record['node_from'], 'node_id_to': record['node_to'], 'weight': 1.0 / len(records)}
+            namePos = content.find(record['name'].decode('utf-8'))
+            if namePos != -1:
+                length = len(content)
+                weight = (length - namePos) / length
+                yield {'node_id_from': record['node_from'], 'node_id_to': record['node_to'], 'weight': weight}
 
 def buildFeatureNode():
     pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
