@@ -1,6 +1,80 @@
 import MySQLdb.cursors
 from itertools import chain
 
+wikidbName = 'wikidb'
+
+class TableIndex:
+    def __init__(self, name, isUnique):
+        self.type = type
+        self.name = name
+        self.isUnique = isUnique
+        self.cols = []
+        self.isPrimary = name.lower() == 'primary'
+
+    def addCol(self, col):
+        self.cols.append(col)
+
+class TableIndexHolder:
+    def __init__(self, openConn, table, indexList):
+        self.openConn = openConn 
+        self.indexList = indexList
+        self.table = table
+
+    @classmethod
+    def open(cls, openConn, table):
+        conn = openConn()
+        cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+        cur.execute("""
+            show index from %s
+        """ % (table, ))
+        records = cur.fetchall()
+        nameToIndex = {}
+        for r in sorted(records, key=lambda x: x['Seq_in_index']):
+            name = r['Key_name']
+            if name not in nameToIndex:
+                nameToIndex[name] = TableIndex(name, r['Non_unique'] == 0)
+            nameToIndex[name].addCol(r['Column_name'])
+        for index in nameToIndex.values():
+            key = None
+            if index.isPrimary:
+                continue
+                cur.execute("""
+                    alter table %s drop primary key
+                """ % (table))
+            else:
+                cur.execute("""
+                    alter table %s drop index %s
+                """ % (table, index.name))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return cls(openConn, table, list(nameToIndex.values()))
+
+    def close(self):
+        conn = self.openConn()
+        cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+        for index in self.indexList:
+            key = None
+            if index.isPrimary:
+                continue
+                key = 'primary key'
+            elif index.isUnique:
+                key = 'unique key'
+            else:
+                key = 'index'
+
+            cur.execute("""
+                alter table %s add %s(%s)
+            """ % (self.table, key, ', '.join(index.cols)))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+def sqlStr(text):
+    return text.replace('{{wikidb}}', wikidbName)
+
 class DictUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     MySQLdb.cursors.CursorDictRowsMixIn, \
     MySQLdb.cursors.BaseCursor):
@@ -24,7 +98,7 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
             sql += " order by %s " % (order,)
 
         print(sql)
-        _cur.execute(sql, arg)
+        _cur.execute(sqlStr(sql), arg)
         cnt = 0
         while 1:
             cnt += 1
@@ -115,11 +189,11 @@ def allCategoryPageByInfotype(openConn, infotype):
         yield cols
 
 def queryMultiInsert(cur, table, cols, valuesList):
-    cur.execute(("""
+    cur.execute(sqlStr(("""
         insert into %s (%s)
         values
         """ % (table, ','.join(cols))) \
-        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList)), \
+        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
         tuple(chain.from_iterable(valuesList)) \
     )
     pass

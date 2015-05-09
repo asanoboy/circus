@@ -9,7 +9,8 @@ from numerical import *
 from parser import *
 
 def openConn():
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="anadb2", charset='utf8')
+    #return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="anadb2", charset='utf8')
+    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="enwikidb", charset='utf8')
 
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -44,11 +45,11 @@ def createPageInfoByPageWikiText(text, allowedNames):
         info = infos[0] # Apply first info.
 
     while 1:
-        cur.execute("""
+        cur.execute(sqlStr("""
             select ito.name from info_ex ifrom
             inner join info_ex ito on ifrom.redirect_to = ito.text_id
             where ifrom.name = %s
-        """, (info.name,))
+        """), (info.name,))
         res = cur.fetchall()
         if len(res) == 1:
             info.name = res[0]['name']
@@ -58,24 +59,24 @@ def createPageInfoByPageWikiText(text, allowedNames):
     return info
 
 def selectTextByTitle(title, namespace):
-    cur.execute("""
+    cur.execute(sqlStr("""
         select t.old_text wiki, p.page_id id from wikidb.page p 
         inner join wikidb.revision r on r.rev_page = p.page_id
         inner join wikidb.text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = %s
-        """, (title, namespace))
+        """), (title, namespace))
     res = cur.fetchall()
     if len(res) > 0:
         return res[0]['wiki'].decode('utf-8')
     return False
 
 def createPageByTitle(title, allowedInfoNames=False):
-    cur.execute("""
+    cur.execute(sqlStr("""
         select t.old_text wiki, p.page_id id from wikidb.page p 
         inner join wikidb.revision r on r.rev_page = p.page_id
         inner join wikidb.text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = 0
-        """, (title,))
+        """), (title,))
     res = cur.fetchall()
     if len(res) > 0:
         text = res[0]['wiki'].decode('utf-8')
@@ -88,22 +89,22 @@ def createPageByTitle(title, allowedInfoNames=False):
         return False 
 
 def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryTitles=set()):
-    cur.execute("""
+    cur.execute(sqlStr("""
         select p.page_title title from wikidb.categorylinks cl 
         inner join wikidb.page p on cl.cl_from = p.page_id
         where cl.cl_to=%s and cl_type = "page"
-        """, (catTitle,))
+        """), (catTitle,))
     res = cur.fetchall()
     pageTitles = set([record['title'].decode('utf-8') for record in res])
     pageTitles = list(filter(lambda title: title not in excludePageTitles, pageTitles))
     pages = [createPageByTitle(title) for title in pageTitles]
 
     if recursive:
-        cur.execute("""
+        cur.execute(sqlStr("""
             select p.page_title title from wikidb.categorylinks cl 
             inner join wikidb.page p on cl.cl_from = p.page_id
             where cl.cl_to=%s and cl_type = "subcat"
-            """, (catTitle,))
+            """), (catTitle,))
         titles = set([record['title'].decode('utf-8') for record in cur.fetchall()])
         joinedExcludeCategoryTitles = excludeCategoryTitles | titles
         joinedExcludePageTitles = excludePageTitles | pageTitles
@@ -113,9 +114,9 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
     return pages
 
 def selectAllInfoNames():
-    cur.execute("""
+    cur.execute(sqlStr("""
         select name from info_ex
-    """)
+    """))
     return [record['name'] for record in cur.fetchall()]
 
 def createCategoryWithoutStub(data):
@@ -157,10 +158,10 @@ def buildInfoEx():
     updateInfoRedirect()
 
 def updateInfoFeatured():
-    cur.execute("""
+    cur.execute(sqlStr("""
         update info_ex
         set featured = case when %s then 1 else 0 end
-        """ % (' or '.join(['name = %s'] * len(valid_infotypes)), ), \
+        """ % (' or '.join(['name = %s'] * len(valid_infotypes)), )), \
         set(valid_infotypes))
     conn.commit()
 
@@ -173,23 +174,23 @@ def updateInfoRedirect():
         m = p.search(text)
         if m:
             redirectName = m.group(2).replace(' ', '_')
-            cur.execute("""
+            cur.execute(sqlStr("""
                 select text_id from info_ex where name = %s
-            """, (redirectName,))
+            """), (redirectName,))
             result = cur.fetchall()
 
             if len(result) == 0:
-                cur.execute("""
+                cur.execute(sqlStr("""
                     select text_id from info_ex where lower(name) = lower(%s)
-                """, (redirectName,))
+                """), (redirectName,))
                 result = cur.fetchall()
                 
             if len(result) == 1:
                 redirectTo = result[0]['text_id']
-                cur.execute("""
+                cur.execute(sqlStr("""
                     update info_ex set redirect_to = %s
                     where text_id = %s
-                """, (redirectTo, infoRecord['text_id']))
+                """), (redirectTo, infoRecord['text_id']))
             else:
                 print( 'Invalid redirect from %s to %s' % (infoName, redirectName) )
 
@@ -204,13 +205,13 @@ def buildCatInfo(table='category_info'):
     catDataIter = allCategoryDataGenerator(openConn)
     catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
     for cat in catIter:
-        cur.execute("""
+        cur.execute(sqlStr("""
             select px.infotype, count(*) page_num from wikidb.categorylinks cl
             inner join page_ex px on px.page_id = cl.cl_from
             where cl.cl_type = 'page' and cl.cl_to = %s
             group by px.infotype
             order by px.page_id asc
-            """, (cat.name, ))
+            """), (cat.name, ))
         valuesList = [[cat.id, record['infotype'], record['page_num']] for record in cur.fetchall()]
         if len(valuesList) > 0:
             queryMultiInsert(cur, table, ['cat_id', 'infotype', 'page_num'], valuesList)
@@ -219,10 +220,10 @@ def buildCatInfo(table='category_info'):
     updateCatInfoFeatured(table)
 
 def updateCatInfoFeatured(table='category_info'):
-    cur.execute("""
+    cur.execute(sqlStr("""
         update %s
         set featured = case when %s then 1 else 0 end
-        """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), ), \
+        """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), )), \
         set(valid_infotypes))
     conn.commit()
 
@@ -261,7 +262,7 @@ def updateAllCategoryRelations():
     return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
 def maxNodeId():
-    cur.execute('select max(node_id) max from node')
+    cur.execute(sqlStr('select max(node_id) max from node'))
     rs = cur.fetchone()
     return rs['max'] if rs['max'] is not None else 0
 
@@ -300,14 +301,14 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
         infotype = cols['infotype']
         pageId = cols['page_id']
         name = cols['name']
-        cur.execute("""
+        cur.execute(sqlStr("""
             select pl.pl_title name, pr_from.node_id node_from, pr_to.node_id node_to from wikidb.pagelinks pl
             inner join wikidb.page p on pl.pl_title = p.page_title and p.page_namespace = 0
             inner join page_ex px on px.page_id = p.page_id and px.infotype = %s
             inner join page_node_relation pr_from on pr_from.page_id = pl.pl_from
             inner join page_node_relation pr_to on pr_to.page_id = p.page_id
             where pl.pl_namespace = 0 and pl.pl_from = %s
-        """, (infotype, pageId))
+        """), (infotype, pageId))
         records = cur.fetchall()
         content = selectTextByTitle(name, 0)
         content = removeComment(content)
