@@ -56,12 +56,9 @@ def init_database(database, schema_file):
     conn.query('create database %s' % (database, ))
     command('mysql -u root -h 127.0.0.1 %s < %s' % (database, schema_file))
     conn.select_db(database)
-    conn.query("""
-        alter table revision modify rev_comment MEDIUMBLOB
-    """)
-    conn.query("""
-        alter table page modify page_title VARBINARY(255)
-    """)
+    conn.query('alter table revision modify rev_comment MEDIUMBLOB')
+    conn.query('alter table revision modify rev_user_text VARBINARY(255)')
+    conn.query('alter table page modify page_title VARBINARY(255)')
     conn.close()
     return
 
