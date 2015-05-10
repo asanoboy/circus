@@ -307,7 +307,7 @@ def pageLinkGeneratorWithSameInfotype(pageIterator):
             inner join page_ex px on px.page_id = p.page_id and px.infotype = %s
             inner join page_node_relation pr_from on pr_from.page_id = pl.pl_from
             inner join page_node_relation pr_to on pr_to.page_id = p.page_id
-            where pl.pl_namespace = 0 and pl.pl_from = %s
+            where pl.pl_from = %s
         """), (infotype, pageId))
         records = cur.fetchall()
         content = selectTextByTitle(name, 0)
