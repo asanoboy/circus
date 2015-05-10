@@ -1,4 +1,4 @@
-import argparse, os, os.path, subprocess, shlex
+import argparse, sys, os, os.path, subprocess, shlex
 import MySQLdb
 import MySQLdb.cursors
 from dbutils import TableIndexHolder
@@ -9,12 +9,17 @@ def open_db(db):
 def open_cur(conn):
     return conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
-def command(cmd):
+def command(cmd, output=True):
     print(cmd)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
-    p.wait()
-    stdout_data, stderr_data = p.communicate()
-    return stdout_data.decode('utf-8')
+    if output:
+        p = subprocess.Popen(cmd, shell=True, stdout=sys.stdout, stderr=sys.stderr) 
+        p.wait()
+        return
+    else:
+        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
+        p.wait()
+        stdout_data, stderr_data = p.communicate()
+        return stdout_data.decode('utf-8')
 
 def find_dumps(path):
     files = os.listdir(path)
@@ -66,14 +71,14 @@ def import_from_sql(database, table, absolute_path, work_dir):
         return open_db(database)
 
     os.chdir(work_dir)
-    rt = command('ls')
+    rt = command('ls', output=False)
     if rt:
         raise Exception('work_space is not empty')
         
     holder = TableIndexHolder.open(open_db_with_name, table)
     command('gunzip -c %s > tmp.sql' % (absolute_path, )) 
     command('split -b 50m tmp.sql _')
-    rt = command('ls _*')
+    rt = command('ls _*', output=False)
     rt = rt.split('\n')
     first_chunk = rt[0]
     with open(first_chunk, 'r+b') as f:
@@ -118,25 +123,30 @@ def import_pages(mysql_connector_jar, mwdumper_jar, database, dump_file):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path')
-    parser.add_argument('-w', '--workdir')
+    parser.add_argument('-w', '--work_dir')
     parser.add_argument('-d', '--db')
     parser.add_argument('-s', '--schema')
     parser.add_argument('-m', '--mysql_jar')
     parser.add_argument('-j', '--wiki_jar')
     args = parser.parse_args()
     args = vars(args)
-    files = find_dumps(args['path'])
+    current_dir = os.getcwd()
+    dump_dir = os.path.join(current_dir, args['path'])
+    work_dir = os.path.join(current_dir, args['work_dir'])
+    mysql_jar = os.path.join(current_dir, args['mysql_jar'])
+    wiki_jar = os.path.join(current_dir, args['wiki_jar'])
+
+    files = find_dumps(dump_dir)
     if not files:
-        raise Exception('Not found dump files in %s.', args['path'])
+        raise Exception('Not found dump files in %s.', dump_dir)
 
     init_database(args['db'], args['schema'])
+    import_pages(mysql_jar, wiki_jar, args['db'],  files['page'])
 
-    import_pages(args['mysql_jar'], args['wiki_jar'], args['db'],  files['page'])
-
-    import_from_sql(args['db'], 'category', files['category'], args['workdir'])
-    import_from_sql(args['db'], 'categorylinks', files['categorylinks'], args['workdir'])
-    import_from_sql(args['db'], 'pagelinks', files['pagelinks'], args['workdir'])
-    import_from_sql(args['db'], 'langlinks', files['langlinks'], args['workdir'])
+    import_from_sql(args['db'], 'category', files['category'], work_dir)
+    import_from_sql(args['db'], 'categorylinks', files['categorylinks'], work_dir)
+    import_from_sql(args['db'], 'pagelinks', files['pagelinks'], work_dir)
+    import_from_sql(args['db'], 'langlinks', files['langlinks'], work_dir)
 
     print('Finished')
 
