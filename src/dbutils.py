@@ -61,7 +61,7 @@ class TableIndexHolder:
                 continue
                 key = 'primary key'
             elif index.isUnique:
-                key = 'unique key'
+                key = 'index' # Because unique key is not necessary.
             else:
                 key = 'index'
 
