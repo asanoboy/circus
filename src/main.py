@@ -1,6 +1,7 @@
 import MySQLdb
 import json
 import re
+import time
 from circus_itertools import lazy_chunked as chunked
 from models import *
 from dbutils import *
@@ -9,8 +10,7 @@ from numerical import *
 from parser import *
 
 def openConn():
-    #return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="anadb2", charset='utf8')
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="enwikidb", charset='utf8')
+    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="jawiki", charset='utf8')
 
 conn = openConn()
 cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -46,8 +46,8 @@ def createPageInfoByPageWikiText(text, allowedNames):
 
     while 1:
         cur.execute(sqlStr("""
-            select ito.name from info_ex ifrom
-            inner join info_ex ito on ifrom.redirect_to = ito.text_id
+            select ito.name from an_info ifrom
+            inner join an_info ito on ifrom.redirect_to = ito.text_id
             where ifrom.name = %s
         """), (info.name,))
         res = cur.fetchall()
@@ -60,9 +60,9 @@ def createPageInfoByPageWikiText(text, allowedNames):
 
 def selectTextByTitle(title, namespace):
     cur.execute(sqlStr("""
-        select t.old_text wiki, p.page_id id from wikidb.page p 
-        inner join wikidb.revision r on r.rev_page = p.page_id
-        inner join wikidb.text t on t.old_id = r.rev_text_id
+        select t.old_text wiki, p.page_id id from page p 
+        inner join revision r on r.rev_page = p.page_id
+        inner join text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = %s
         """), (title, namespace))
     res = cur.fetchall()
@@ -72,9 +72,9 @@ def selectTextByTitle(title, namespace):
 
 def createPageByTitle(title, allowedInfoNames=False):
     cur.execute(sqlStr("""
-        select t.old_text wiki, p.page_id id from wikidb.page p 
-        inner join wikidb.revision r on r.rev_page = p.page_id
-        inner join wikidb.text t on t.old_id = r.rev_text_id
+        select t.old_text wiki, p.page_id id from page p 
+        inner join revision r on r.rev_page = p.page_id
+        inner join text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = 0
         """), (title,))
     res = cur.fetchall()
@@ -90,8 +90,8 @@ def createPageByTitle(title, allowedInfoNames=False):
 
 def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryTitles=set()):
     cur.execute(sqlStr("""
-        select p.page_title title from wikidb.categorylinks cl 
-        inner join wikidb.page p on cl.cl_from = p.page_id
+        select p.page_title title from categorylinks cl 
+        inner join page p on cl.cl_from = p.page_id
         where cl.cl_to=%s and cl_type = "page"
         """), (catTitle,))
     res = cur.fetchall()
@@ -101,8 +101,8 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
 
     if recursive:
         cur.execute(sqlStr("""
-            select p.page_title title from wikidb.categorylinks cl 
-            inner join wikidb.page p on cl.cl_from = p.page_id
+            select p.page_title title from categorylinks cl 
+            inner join page p on cl.cl_from = p.page_id
             where cl.cl_to=%s and cl_type = "subcat"
             """), (catTitle,))
         titles = set([record['title'].decode('utf-8') for record in cur.fetchall()])
@@ -115,7 +115,7 @@ def selectPages(catTitle, recursive=0, excludePageTitles=set(), excludeCategoryT
 
 def selectAllInfoNames():
     cur.execute(sqlStr("""
-        select name from info_ex
+        select name from an_info
     """))
     return [record['name'] for record in cur.fetchall()]
 
@@ -144,14 +144,14 @@ def buildPageEx():
     pages = filter(lambda p: p and p.info, pages)
 
     for pageList in chunked(pages, 100):
-        queryMultiInsert(cur, 'page_ex', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
+        queryMultiInsert(cur, 'an_page', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
     conn.commit()
 
 def buildInfoEx():
     for datas in chunked(allInfoDataGenerator(openConn), 100):
-        queryMultiInsert(cur, 'info_ex', ['text_id', 'name'], datas)
+        queryMultiInsert(cur, 'an_info', ['text_id', 'name'], datas)
 
     conn.commit()
     updateInfoFeatured()
@@ -159,7 +159,7 @@ def buildInfoEx():
 
 def updateInfoFeatured():
     cur.execute(sqlStr("""
-        update info_ex
+        update an_info
         set featured = case when %s then 1 else 0 end
         """ % (' or '.join(['name = %s'] * len(valid_infotypes)), )), \
         set(valid_infotypes))
@@ -175,20 +175,20 @@ def updateInfoRedirect():
         if m:
             redirectName = m.group(2).replace(' ', '_')
             cur.execute(sqlStr("""
-                select text_id from info_ex where name = %s
+                select text_id from an_info where name = %s
             """), (redirectName,))
             result = cur.fetchall()
 
             if len(result) == 0:
                 cur.execute(sqlStr("""
-                    select text_id from info_ex where lower(name) = lower(%s)
+                    select text_id from an_info where lower(name) = lower(%s)
                 """), (redirectName,))
                 result = cur.fetchall()
                 
             if len(result) == 1:
                 redirectTo = result[0]['text_id']
                 cur.execute(sqlStr("""
-                    update info_ex set redirect_to = %s
+                    update an_info set redirect_to = %s
                     where text_id = %s
                 """), (redirectTo, infoRecord['text_id']))
             else:
@@ -201,13 +201,13 @@ def updateInfoRedirect():
                 raise Exception(msg)
     conn.commit()
 
-def buildCatInfo(table='category_info'):
+def buildCatInfo(table='an_category_info'):
     catDataIter = allCategoryDataGenerator(openConn)
     catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
     for cat in catIter:
         cur.execute(sqlStr("""
-            select px.infotype, count(*) page_num from wikidb.categorylinks cl
-            inner join page_ex px on px.page_id = cl.cl_from
+            select px.infotype, count(*) page_num from categorylinks cl
+            inner join an_page px on px.page_id = cl.cl_from
             where cl.cl_type = 'page' and cl.cl_to = %s
             group by px.infotype
             order by px.page_id asc
@@ -219,7 +219,7 @@ def buildCatInfo(table='category_info'):
     conn.commit()
     updateCatInfoFeatured(table)
 
-def updateCatInfoFeatured(table='category_info'):
+def updateCatInfoFeatured(table='an_category_info'):
     cur.execute(sqlStr("""
         update %s
         set featured = case when %s then 1 else 0 end
@@ -261,81 +261,93 @@ def updateCategoryRelationsByInfotype(infotype):
 def updateAllCategoryRelations():
     return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
-def maxNodeId():
-    cur.execute(sqlStr('select max(node_id) max from node'))
-    rs = cur.fetchone()
-    return rs['max'] if rs['max'] is not None else 0
-
-def _buildNodeInternal(generator, table, idCol):
-    nextNodeId = maxNodeId() + 1
-    for records in chunked(generator(openConn), 100):
-        relationValues = []
-        nodeValues = []
-        for cols in records:
-            pageId = cols[0]
-            name = cols[1]
-            relationNodeId = cols[2]
-            nodeId = cols[3]
-            if relationNodeId is None:
-                relationValues.append([pageId, nextNodeId])
-                nodeValues.append([nextNodeId, name])
-                nextNodeId += 1
-            elif nodeId is None:
-                nodeValues.append([relationNodeId, name])
-
-        if len(relationValues):
-            queryMultiInsert(cur, '%s' % (table,), [idCol, 'node_id'], relationValues)
-        if len(nodeValues):
-            queryMultiInsert(cur, 'node', ['node_id', 'name'], nodeValues)
-
-    conn.commit()
-
-def buildNodeByPage():
-    _buildNodeInternal(allFeaturedPageGenerator, 'page_node_relation', 'page_id')
-
-def buildNodeByCategory():
-    _buildNodeInternal(allFeaturedCategoryGenerator, 'category_node_relation', 'cat_id')
-
-def pageLinkGeneratorWithSameInfotype(pageIterator):
-    for cols in pageIterator:
-        infotype = cols['infotype']
-        pageId = cols['page_id']
-        name = cols['name']
-        cur.execute(sqlStr("""
-            select pl.pl_title name, pr_from.node_id node_from, pr_to.node_id node_to from wikidb.pagelinks pl
-            inner join wikidb.page p on pl.pl_title = p.page_title and p.page_namespace = 0
-            inner join page_ex px on px.page_id = p.page_id and px.infotype = %s
-            inner join page_node_relation pr_from on pr_from.page_id = pl.pl_from
-            inner join page_node_relation pr_to on pr_to.page_id = p.page_id
-            where pl.pl_from = %s
-        """), (infotype, pageId))
-        records = cur.fetchall()
-        content = selectTextByTitle(name, 0)
-        content = removeComment(content)
-        for record in records:
-            namePos = content.find(record['name'].decode('utf-8'))
-            if namePos != -1:
-                length = len(content)
-                weight = (length - namePos) / length
-                yield {'node_id_from': record['node_from'], 'node_id_to': record['node_to'], 'weight': weight}
-
-def buildFeatureNode():
+def syncMaster():
     pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
-    for i, links in enumerate(chunked(pageLinkGeneratorWithSameInfotype(pageIter), 100)):
-        queryMultiInsert(cur, 'feature_node_relation', \
-            ['feature_node_id', 'node_id', 'weight'], \
-            [ [r['node_id_from'], r['node_id_to'], r['weight']] for r in links] )
-    conn.commit()
-    
-def buildTreeNode(clean=False):
-    pass # later
+    for pages in chuncked(pageIter, 100):
+        pass
+
+#def maxNodeId():
+#    cur.execute(sqlStr('select max(node_id) max from integrated.node'))
+#    rs = cur.fetchone()
+#    return rs['max'] if rs['max'] is not None else 0
+#
+#def _buildNodeInternal(generator, table, idCol):
+#    nextNodeId = maxNodeId() + 1
+#    for records in chunked(generator(openConn), 100):
+#        relationValues = []
+#        nodeValues = []
+#        for cols in records:
+#            pageId = cols[0]
+#            name = cols[1]
+#            relationNodeId = cols[2]
+#            nodeId = cols[3]
+#            if relationNodeId is None:
+#                relationValues.append([pageId, nextNodeId])
+#                nodeValues.append([nextNodeId, name])
+#                nextNodeId += 1
+#            elif nodeId is None:
+#                nodeValues.append([relationNodeId, name])
+#
+#        if len(relationValues):
+#            queryMultiInsert(cur, '%s' % (table,), [idCol, 'node_id'], relationValues)
+#        if len(nodeValues):
+#            queryMultiInsert(cur, 'integrated.node', ['node_id', 'name'], nodeValues)
+#
+#    conn.commit()
+#
+#def buildNodeByPage():
+#    _buildNodeInternal(allFeaturedPageGenerator, 'an_page_node_relation', 'page_id')
+#
+#def buildNodeByCategory():
+#    _buildNodeInternal(allFeaturedCategoryGenerator, 'an_category_node_relation', 'cat_id')
+#
+#def pageLinkGeneratorWithSameInfotype(pageIterator):
+#    #conn = openConn()
+#    #cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+#    for cols in pageIterator:
+#        infotype = cols['infotype']
+#        pageId = cols['page_id']
+#        name = cols['name']
+#        cur.execute(sqlStr("""
+#            select pl.pl_title name, pr_from.node_id node_from, pr_to.node_id node_to from pagelinks pl
+#            inner join page p on pl.pl_title = p.page_title and p.page_namespace = 0
+#            inner join an_page px on px.page_id = p.page_id and px.infotype = %s
+#            inner join an_page_node_relation pr_from on pr_from.page_id = pl.pl_from
+#            inner join an_page_node_relation pr_to on pr_to.page_id = p.page_id
+#            where pl.pl_from = %s and pl.pl_namespace = 0
+#        """), (infotype, pageId))
+#        records = cur.fetchall()
+#        content = selectTextByTitle(name, 0)
+#        content = removeComment(content)
+#        for record in records:
+#            namePos = content.find(record['name'].decode('utf-8'))
+#            if namePos != -1:
+#                length = len(content)
+#                weight = (length - namePos) / length
+#                yield {'node_id_from': record['node_from'], 'node_id_to': record['node_to'], 'weight': weight}
+#    #cur.close()
+#    #conn.close()
+#
+#def buildFeatureNode():
+#    pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
+#    for i, links in enumerate(chunked(pageLinkGeneratorWithSameInfotype(pageIter), 100)):
+#        if i % 1000 == 0:
+#            time.sleep(1)
+#        queryMultiInsert(cur, 'integrated.feature_node_relation', \
+#            ['feature_node_id', 'node_id', 'weight'], \
+#            [ [r['node_id_from'], r['node_id_to'], r['weight']] for r in links] )
+#    conn.commit()
+#    
+#def buildTreeNode(clean=False):
+#    pass # later
 
 if __name__ == '__main__':
-    #buildInfoEx()
-    #buildCatInfo()
-    #buildPageEx()
+    buildInfoEx()
+    buildPageEx()
+    buildCatInfo()
+    syncMaster()
     #buildNodeByPage()
     #buildNodeByCategory()
-    buildFeatureNode()
+    #buildFeatureNode()
 
     pass
