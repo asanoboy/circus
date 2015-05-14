@@ -195,7 +195,7 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
     other_langs = [l for l in imported_langs if l != lang]
     lang_to_wiki_db = { l: WikiDB(l) for l in other_langs}
 
-    page_iter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
+    page_iter = wiki_db.allFeaturedPageGenerator(dictFormat=True, featured=False)
     page_id_iter = map(lambda r: r['page_id'], page_iter)
     missing_page_id_iter = master_db.missing_page_ids_generator(lang, page_id_iter)
     #linked_other_lang_page_infos_iter = wiki_db.other_lang_page_infos_generator(missing_page_id_iter)
@@ -206,7 +206,7 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
         other_lang_page_infos = wiki_db.selectAndFetchAll("""
             select ll_from orig_id, ll_title title, ll_lang lang from langlinks
             where ll_from = %s
-        """, (missing_page_id, ))
+        """, (missing_page_id, ), decode=True)
     #for other_lang_page_infos in linked_other_lang_page_infos_iter:
         imported_infos = [ r for r in other_lang_page_infos if r['lang'] in imported_langs]
         found_master_page_id = None
@@ -216,8 +216,7 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
             res = db.selectAndFetchAll("""
                 select p.page_id from page p
                 inner join an_page ap on p.page_id = ap.page_id
-                inner join an_info ai on ai.name = ap.infotype
-                where p.title = %s and p.namespace = 0 and ai.featured = 1
+                where p.page_title = %s and p.page_namespace = 0
             """, (link_info['title'],))
             if len(res) == 1:
                 lang_page_id = res[0]['page_id']
@@ -336,7 +335,8 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
 
 if __name__ == '__main__':
     imported_langs = ['ja', 'pt']
-    wiki_db = WikiDB('ja')
+    lang = 'pt'
+    wiki_db = WikiDB(lang)
     #print('buildInfoEx')
     #buildInfoEx(wiki_db)
     #print('buildPageEx')
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     #buildCatInfo(wiki_db)
 
     master_db = MasterWikiDB('wikimaster')
-    sync_master('ja', imported_langs, wiki_db, master_db)
+    sync_master(lang, imported_langs, wiki_db, master_db)
     #buildNodeByPage(wiki_db)
     #buildNodeByCategory(wiki_db)
     #buildFeatureNode(wiki_db)

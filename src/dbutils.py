@@ -125,6 +125,9 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
 #    )
 #    pass
 
+def decode_if_binary(x):
+    return x.decode('utf-8') if hasattr(x, 'decode') else x
+
 class BaseDB:
     def __init__(self, dbname):
         self.dbname = dbname
@@ -150,7 +153,7 @@ class BaseDB:
         cur.execute(query, args)
         cur.close()
 
-    def selectAndFetchAll(self, query, args=set(), dictFormat=True):
+    def selectAndFetchAll(self, query, args=set(), dictFormat=True, decode=False):
         cur = None
         if dictFormat:
             cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -159,6 +162,12 @@ class BaseDB:
 
         cur.execute(query, args)
         rt = cur.fetchall()
+        if decode:
+            if dictFormat:
+                rt = [ { key: decode_if_binary(value) for key, value in record.items() } for record in rt]
+            else:
+                raise Exception('Not support')
+
         cur.close()
         return rt
 
@@ -209,18 +218,16 @@ class WikiDB(BaseDB):
         for cols in selectGenerator(self.openConn, 'an_info', cols=['text_id', 'name'], order='text_id asc'):
             yield {'text_id':cols[0], 'name':cols[1]}
 
-    def allFeaturedPageGenerator(self, dictFormat=False):
+    def allFeaturedPageGenerator(self, dictFormat=False, featured=True):
         for cols in selectGenerator(self.openConn, 'an_page p', \
-                cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id', 'p.infotype'], \
+                cols=['p.page_id', 'p.name', 'p.infotype'], \
                 joins=[\
                     'inner join an_info i on i.name = p.infotype', \
-                    'left join an_page_node_relation pr on pr.page_id = p.page_id', \
-                    'left join integrated.node n on n.node_id = pr.node_id', \
                 ], \
-                cond='i.featured = 1', \
+                cond= 'i.featured = 1' if featured else None, \
                 order='p.page_id asc'):
             if dictFormat:
-                yield dict(zip(['page_id', 'name', 'relation_ndoe_id', 'node_id', 'infotype'], cols))
+                yield dict(zip(['page_id', 'name', 'infotype'], cols))
             else:
                 yield cols
 
