@@ -112,90 +112,129 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
 
         _cur.close()
 
+#def queryMultiInsert(cur, table, cols, valuesList):
+#    cur.execute(sqlStr(("""
+#        insert into %s (%s)
+#        values
+#        """ % (table, ','.join(cols))) \
+#        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
+#        tuple(chain.from_iterable(valuesList)) \
+#    )
+#    pass
+
 class WikiDB:
     def __init__(self, dbname):
         self.dbname = dbname
+        self.write_conn = self.openConn()
+        self.read_conn = self.openConn()
+        #self.write_cur = self.write_conn.cur()
 
-def allCategoryDataGenerator(openConn):
-    for cols in selectGenerator(openConn, 'category c', \
-            cols=['cat_id', 'cat_title', 't.old_text'], \
-            joins=[ \
-                'inner join page p on p.page_title = c.cat_title and p.page_namespace = 14', \
-                'inner join revision r on r.rev_page = p.page_id', \
-                'inner join text t on t.old_id = r.rev_text_id', \
-            ], \
-            order='cat_id asc'):
-        yield (cols[0], cols[1], cols[2])
+    def openConn(self):
+        return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
 
-def allPageTitlesGenerator(openConn):
-    for cols in selectGenerator(openConn, 'page', cols=['page_title'], cond='page_namespace = 0', \
-            order='page_title asc'):
-        yield cols[0]
+    def allCategoryDataGenerator(self):
+        for cols in selectGenerator(self.openConn, 'category c', \
+                cols=['cat_id', 'cat_title', 't.old_text'], \
+                joins=[ \
+                    'inner join page p on p.page_title = c.cat_title and p.page_namespace = 14', \
+                    'inner join revision r on r.rev_page = p.page_id', \
+                    'inner join text t on t.old_id = r.rev_text_id', \
+                ], \
+                order='cat_id asc'):
+            yield (cols[0], cols[1], cols[2])
 
-def allInfoDataGenerator(openConn):
-    for cols in selectGenerator(openConn, 'page p', \
-            joins=[\
-                'inner join revision r on r.rev_page = p.page_id', \
-                'inner join text t on t.old_id = r.rev_text_id' \
-            ], \
-            cols=['p.page_title', 't.old_text','t.old_id'], \
-            cond='page_namespace = 10', \
-            order='p.page_title asc'):
+    def allPageTitlesGenerator(self):
+        for cols in selectGenerator(self.openConn, 'page', cols=['page_title'], cond='page_namespace = 0', \
+                order='page_title asc'):
+            yield cols[0]
 
-        if not cols[0].lower().startswith('infobox') \
-                and cols[1].lower().find('infobox') == -1:
-            continue
-        yield (cols[2], cols[0])
+    def allInfoDataGenerator(self):
+        for cols in selectGenerator(self.openConn, 'page p', \
+                joins=[\
+                    'inner join revision r on r.rev_page = p.page_id', \
+                    'inner join text t on t.old_id = r.rev_text_id' \
+                ], \
+                cols=['p.page_title', 't.old_text','t.old_id'], \
+                cond='page_namespace = 10', \
+                order='p.page_title asc'):
 
-def allInfoRecordGenerator(openConn):
-    for cols in selectGenerator(openConn, 'an_info', cols=['text_id', 'name'], order='text_id asc'):
-        yield {'text_id':cols[0], 'name':cols[1]}
+            if not cols[0].lower().startswith('infobox') \
+                    and cols[1].lower().find('infobox') == -1:
+                continue
+            yield (cols[2], cols[0])
 
-def allFeaturedPageGenerator(openConn, dictFormat=False):
-    for cols in selectGenerator(openConn, 'an_page p', \
-            cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id', 'p.infotype'], \
-            joins=[\
-                'inner join an_info i on i.name = p.infotype', \
-                'left join an_page_node_relation pr on pr.page_id = p.page_id', \
-                'left join integrated.node n on n.node_id = pr.node_id', \
-            ], \
-            cond='i.featured = 1', \
-            order='p.page_id asc'):
-        if dictFormat:
-            yield dict(zip(['page_id', 'name', 'relation_ndoe_id', 'node_id', 'infotype'], cols))
-        else:
+    def allInfoRecordGenerator(self):
+        for cols in selectGenerator(self.openConn, 'an_info', cols=['text_id', 'name'], order='text_id asc'):
+            yield {'text_id':cols[0], 'name':cols[1]}
+
+    def allFeaturedPageGenerator(self, dictFormat=False):
+        for cols in selectGenerator(self.openConn, 'an_page p', \
+                cols=['p.page_id', 'p.name', 'pr.node_id', 'n.node_id', 'p.infotype'], \
+                joins=[\
+                    'inner join an_info i on i.name = p.infotype', \
+                    'left join an_page_node_relation pr on pr.page_id = p.page_id', \
+                    'left join integrated.node n on n.node_id = pr.node_id', \
+                ], \
+                cond='i.featured = 1', \
+                order='p.page_id asc'):
+            if dictFormat:
+                yield dict(zip(['page_id', 'name', 'relation_ndoe_id', 'node_id', 'infotype'], cols))
+            else:
+                yield cols
+
+    def allFeaturedCategoryGenerator(self):
+        for cols in selectGenerator(self.openConn, 'an_category_info ci', \
+                cols=['ci.cat_id', 'c.cat_title', 'cr.node_id', 'n.node_id'], \
+                joins=[\
+                    'inner join category c on c.cat_id = ci.cat_id', \
+                    'left join an_category_node_relation cr on cr.cat_id = ci.cat_id', \
+                    'left join integrated.node n on n.node_id = cr.node_id', \
+                ], \
+                cond='ci.featured = 1', \
+                order='ci.cat_id asc'):
             yield cols
 
-def allFeaturedCategoryGenerator(openConn):
-    for cols in selectGenerator(openConn, 'an_category_info ci', \
-            cols=['ci.cat_id', 'c.cat_title', 'cr.node_id', 'n.node_id'], \
-            joins=[\
-                'inner join category c on c.cat_id = ci.cat_id', \
-                'left join an_category_node_relation cr on cr.cat_id = ci.cat_id', \
-                'left join integrated.node n on n.node_id = cr.node_id', \
-            ], \
-            cond='ci.featured = 1', \
-            order='ci.cat_id asc'):
-        yield cols
+    def allCategoryPageByInfotype(self, infotype):
+        for cols in selectGenerator(self.openConn, 'an_page p', \
+                cols=['c.cat_id', 'p.page_id'], \
+                joins=[\
+                    'inner join categorylinks cl on cl.cl_from = p.page_id', \
+                    'inner join category c on c.cat_title = cl.cl_to', \
+                    'inner join an_category_info ci on ci.cat_id = c.cat_id and ci.infotype = p.infotype', \
+                ],\
+                cond='ci.featured = 1 and p.infotype = %s',\
+                order='c.cat_id asc, p.page_id asc', arg=(infotype,)):
+            yield cols
 
-def allCategoryPageByInfotype(openConn, infotype):
-    for cols in selectGenerator(openConn, 'an_page p', \
-            cols=['c.cat_id', 'p.page_id'], \
-            joins=[\
-                'inner join categorylinks cl on cl.cl_from = p.page_id', \
-                'inner join category c on c.cat_title = cl.cl_to', \
-                'inner join an_category_info ci on ci.cat_id = c.cat_id and ci.infotype = p.infotype', \
-            ],\
-            cond='ci.featured = 1 and p.infotype = %s',\
-            order='c.cat_id asc, p.page_id asc', arg=(infotype,)):
-        yield cols
+    def multiInsert(self, table, cols, valuesList):
+        cur = self.write_conn.cursor()
+        cur.execute(sqlStr(("""
+            insert into %s (%s)
+            values
+            """ % (table, ','.join(cols))) \
+            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
+            tuple(chain.from_iterable(valuesList)) \
+        )
+        cur.close()
 
-def queryMultiInsert(cur, table, cols, valuesList):
-    cur.execute(sqlStr(("""
-        insert into %s (%s)
-        values
-        """ % (table, ','.join(cols))) \
-        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
-        tuple(chain.from_iterable(valuesList)) \
-    )
-    pass
+    def updateQuery(self, query, args=set()):
+        cur = self.write_conn.cursor()
+        cur.execute(query, args)
+        cur.close()
+
+    def selectAndFetchAll(self, query, args=set(), dictFormat=True):
+        cur = None
+        if dictFormat:
+            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+        else:
+            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.Cursor)
+
+        cur.execute(query, args)
+        rt = cur.fetchall()
+        cur.close()
+        return rt
+
+    def commit(self):
+        self.write_conn.commit()
+
+

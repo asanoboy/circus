@@ -133,40 +133,40 @@ def createCategoryWithoutStub(data):
     else:
         return Category(id, title)
 
-def buildPageEx():
+def buildPageEx(wiki_db):
     def createFunctionPageByTitle(allowedInfoNames):
         def createPageInternal(title):
             return createPageByTitle(title, allowedInfoNames)
         return createPageInternal
 
     allowedInfoNames = selectAllInfoNames()
-    pages = map(createFunctionPageByTitle(allowedInfoNames), allPageTitlesGenerator(openConn))
+    pages = map(createFunctionPageByTitle(allowedInfoNames), wiki_db.allPageTitlesGenerator())
     pages = filter(lambda p: p and p.info, pages)
 
     for pageList in chunked(pages, 100):
-        queryMultiInsert(cur, 'an_page', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
+        wiki_db.multiInsert('an_page', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
             [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
 
-    conn.commit()
+    wiki_db.commit()
 
-def buildInfoEx():
-    for datas in chunked(allInfoDataGenerator(openConn), 100):
-        queryMultiInsert(cur, 'an_info', ['text_id', 'name'], datas)
+def buildInfoEx(wiki_db):
+    for datas in chunked(wiki_db.allInfoDataGenerator(), 100):
+        wiki_db.multiInsert('an_info', ['text_id', 'name'], datas)
 
-    conn.commit()
-    updateInfoFeatured()
-    updateInfoRedirect()
+    wiki_db.commit()
+    updateInfoFeatured(wiki_db)
+    updateInfoRedirect(wiki_db)
 
-def updateInfoFeatured():
-    cur.execute(sqlStr("""
+def updateInfoFeatured(wiki_db):
+    wiki_db.updateQuery(sqlStr("""
         update an_info
         set featured = case when %s then 1 else 0 end
         """ % (' or '.join(['name = %s'] * len(valid_infotypes)), )), \
         set(valid_infotypes))
-    conn.commit()
+    wiki_db.commit()
 
-def updateInfoRedirect():
-    infoRecordIter = allInfoRecordGenerator(openConn)
+def updateInfoRedirect(wiki_db):
+    infoRecordIter = wiki_db.allInfoRecordGenerator()
     p = re.compile('#redirect\s*\[\[(template:)?\s*(.+)\]\]', re.IGNORECASE)
     for infoRecord in infoRecordIter:
         infoName = infoRecord['name']
@@ -174,20 +174,18 @@ def updateInfoRedirect():
         m = p.search(text)
         if m:
             redirectName = m.group(2).replace(' ', '_')
-            cur.execute(sqlStr("""
+            result = wiki_db.selectAndFetchAll(sqlStr("""
                 select text_id from an_info where name = %s
             """), (redirectName,))
-            result = cur.fetchall()
 
             if len(result) == 0:
-                cur.execute(sqlStr("""
+                result = wiki_db.selectAndFetchAll(sqlStr("""
                     select text_id from an_info where lower(name) = lower(%s)
                 """), (redirectName,))
-                result = cur.fetchall()
                 
             if len(result) == 1:
                 redirectTo = result[0]['text_id']
-                cur.execute(sqlStr("""
+                wiki_db.updateQuery(sqlStr("""
                     update an_info set redirect_to = %s
                     where text_id = %s
                 """), (redirectTo, infoRecord['text_id']))
@@ -199,10 +197,11 @@ def updateInfoRedirect():
                 msg = 'Missing to parse redirect info "%s".' % (text,)
                 print(msg)
                 raise Exception(msg)
-    conn.commit()
+    wiki_db.commit()
 
-def buildCatInfo(table='an_category_info'):
-    catDataIter = allCategoryDataGenerator(openConn)
+def buildCatInfo(wiki_db, table='an_category_info'):
+
+    catDataIter = wiki_db.allCategoryDataGenerator()
     catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
     for cat in catIter:
         cur.execute(sqlStr("""
@@ -214,55 +213,55 @@ def buildCatInfo(table='an_category_info'):
             """), (cat.name, ))
         valuesList = [[cat.id, record['infotype'], record['page_num']] for record in cur.fetchall()]
         if len(valuesList) > 0:
-            queryMultiInsert(cur, table, ['cat_id', 'infotype', 'page_num'], valuesList)
+            wiki_db.multiInsert(table, ['cat_id', 'infotype', 'page_num'], valuesList)
 
-    conn.commit()
-    updateCatInfoFeatured(table)
+    wiki_db.commit()
+    updateCatInfoFeatured(wiki_db, table)
 
-def updateCatInfoFeatured(table='an_category_info'):
-    cur.execute(sqlStr("""
+def updateCatInfoFeatured(wiki_db, table='an_category_info'):
+    wiki_db.updateQuery(sqlStr("""
         update %s
         set featured = case when %s then 1 else 0 end
         """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), )), \
         set(valid_infotypes))
-    conn.commit()
+    wiki_db.commit()
 
-def updateCategoryRelationsByInfotype(infotype):
-    pageIds = [] 
-    indexOfPageId = {}
-    catIds = []
-    indexOfCatId = {}
-    for cols in allCategoryPageByInfotype(openConn, infotype):
-        catId = cols[0]
-        pageId = cols[1]
-        if pageId not in pageIds:
-            pageIds.append(pageId)
-            indexOfPageId[pageId] = len(pageIds) - 1
-        if catId not in catIds:
-            catIds.append(catId)
-            indexOfCatId[catId] = len(catIds) - 1
+#def updateCategoryRelationsByInfotype(infotype):
+#    pageIds = [] 
+#    indexOfPageId = {}
+#    catIds = []
+#    indexOfCatId = {}
+#    for cols in allCategoryPageByInfotype(openConn, infotype):
+#        catId = cols[0]
+#        pageId = cols[1]
+#        if pageId not in pageIds:
+#            pageIds.append(pageId)
+#            indexOfPageId[pageId] = len(pageIds) - 1
+#        if catId not in catIds:
+#            catIds.append(catId)
+#            indexOfCatId[catId] = len(catIds) - 1
+#
+#    def categoryPageRelationGenerator():
+#        currentCatId = None
+#        currentRelation = [0] * len(pageIds)
+#        for cols in allCategoryPageByInfotype(openConn, infotype):
+#            catId = cols[0]
+#            pageId = cols[1]
+#            if currentCatId is not None and currentCatId != catId:
+#                yield currentRelation
+#                currentRelation = [0] * len(pageIds)
+#                currentCatId = catId
+#            currentRelation[indexOfPageId[pageId]] = 1
+#        yield currentRelation
+#
+#    childParent = getCategoryRelationship(categoryPageRelationGenerator(), len(catIds), len(pageIds))
+#    return [ (catIds[childCatIndex], catIds[parentCatIndex]) for childCatIndex, parentCatIndex in childParent.items()]
 
-    def categoryPageRelationGenerator():
-        currentCatId = None
-        currentRelation = [0] * len(pageIds)
-        for cols in allCategoryPageByInfotype(openConn, infotype):
-            catId = cols[0]
-            pageId = cols[1]
-            if currentCatId is not None and currentCatId != catId:
-                yield currentRelation
-                currentRelation = [0] * len(pageIds)
-                currentCatId = catId
-            currentRelation[indexOfPageId[pageId]] = 1
-        yield currentRelation
+#def updateAllCategoryRelations():
+#    return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
-    childParent = getCategoryRelationship(categoryPageRelationGenerator(), len(catIds), len(pageIds))
-    return [ (catIds[childCatIndex], catIds[parentCatIndex]) for childCatIndex, parentCatIndex in childParent.items()]
-
-def updateAllCategoryRelations():
-    return map(updateCategoryRelationsByInfotype, valid_infotypes)
-
-def syncMaster():
-    pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
+def syncMaster(wiki_db):
+    pageIter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
     for pages in chuncked(pageIter, 100):
         pass
 
@@ -295,11 +294,11 @@ def syncMaster():
 #
 #    conn.commit()
 #
-#def buildNodeByPage():
-#    _buildNodeInternal(allFeaturedPageGenerator, 'an_page_node_relation', 'page_id')
+#def buildNodeByPage(wiki_db):
+#    _buildNodeInternal(wiki_db.allFeaturedPageGenerator, 'an_page_node_relation', 'page_id')
 #
-#def buildNodeByCategory():
-#    _buildNodeInternal(allFeaturedCategoryGenerator, 'an_category_node_relation', 'cat_id')
+#def buildNodeByCategory(wiki_db):
+#    _buildNodeInternal(wiki_db.allFeaturedCategoryGenerator, 'an_category_node_relation', 'cat_id')
 #
 #def pageLinkGeneratorWithSameInfotype(pageIterator):
 #    #conn = openConn()
@@ -328,8 +327,8 @@ def syncMaster():
 #    #cur.close()
 #    #conn.close()
 #
-#def buildFeatureNode():
-#    pageIter = allFeaturedPageGenerator(openConn, dictFormat=True)
+#def buildFeatureNode(wiki_db):
+#    pageIter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
 #    for i, links in enumerate(chunked(pageLinkGeneratorWithSameInfotype(pageIter), 100)):
 #        if i % 1000 == 0:
 #            time.sleep(1)
@@ -342,12 +341,14 @@ def syncMaster():
 #    pass # later
 
 if __name__ == '__main__':
-    buildInfoEx()
-    buildPageEx()
-    buildCatInfo()
-    syncMaster()
-    #buildNodeByPage()
-    #buildNodeByCategory()
-    #buildFeatureNode()
+    wiki_db = WikiDB('jawiki')
+    buildInfoEx(wiki_db)
+    buildPageEx(wiki_db)
+    buildCatInfo(wiki_db)
+
+    #syncMaster(wiki_db)
+    #buildNodeByPage(wiki_db)
+    #buildNodeByCategory(wiki_db)
+    #buildFeatureNode(wiki_db)
 
     pass
