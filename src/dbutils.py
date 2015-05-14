@@ -2,6 +2,7 @@ import MySQLdb.cursors
 from itertools import chain
 from models import Page, createPageInfoByBracketText
 from parser import getBracketTexts, removeComment
+from circus_itertools import lazy_chunked as chunked
 
 class TableIndex:
     def __init__(self, name, isUnique):
@@ -124,15 +125,53 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
 #    )
 #    pass
 
-class WikiDB:
+class BaseDB:
     def __init__(self, dbname):
         self.dbname = dbname
         self.write_conn = self.openConn()
         self.read_conn = self.openConn()
-        #self.write_cur = self.write_conn.cur()
 
     def openConn(self):
         return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
+
+    def multiInsert(self, table, cols, valuesList):
+        cur = self.write_conn.cursor()
+        cur.execute(sqlStr(("""
+            insert into %s (%s)
+            values
+            """ % (table, ','.join(cols))) \
+            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
+            tuple(chain.from_iterable(valuesList)) \
+        )
+        cur.close()
+
+    def updateQuery(self, query, args=set()):
+        cur = self.write_conn.cursor()
+        cur.execute(query, args)
+        cur.close()
+
+    def selectAndFetchAll(self, query, args=set(), dictFormat=True):
+        cur = None
+        if dictFormat:
+            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
+        else:
+            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.Cursor)
+
+        cur.execute(query, args)
+        rt = cur.fetchall()
+        cur.close()
+        return rt
+
+    def commit(self):
+        print('commit')
+        self.write_conn.commit()
+        self.read_conn.close()
+        self.read_conn = self.openConn()
+
+
+class WikiDB(BaseDB):
+    def __init__(self, dbname):
+        super().__init__(dbname)
 
     def allCategoryDataGenerator(self):
         for cols in selectGenerator(self.openConn, 'category c', \
@@ -249,38 +288,29 @@ class WikiDB:
         else:
             return False 
 
-    def multiInsert(self, table, cols, valuesList):
-        cur = self.write_conn.cursor()
-        cur.execute(sqlStr(("""
-            insert into %s (%s)
-            values
-            """ % (table, ','.join(cols))) \
-            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
-            tuple(chain.from_iterable(valuesList)) \
-        )
-        cur.close()
+class MasterWikiDB(BaseDB):
+    def __init__(self, dbname):
+        super().__init__(dbname)
 
-    def updateQuery(self, query, args=set()):
-        cur = self.write_conn.cursor()
-        cur.execute(query, args)
-        cur.close()
+    def _generate_missing_page_ids(self, lang, page_id_iter):
+        for page_ids in chunked(page_id_iter, 10):
+            records = self.selectAndFetchAll("""
+                select lang_page_id from page_lang_relation
+                where lang = %s and lang_page_id in (
+                """ + ','.join([str(d) for d in page_ids]) + ')', \
+                (lang, ) )
+            found_ids = [r['lang_page_id'] for r in records]
+            for page_id in page_ids:
+                if page_id not in found_ids:
+                    yield page_id
 
-    def selectAndFetchAll(self, query, args=set(), dictFormat=True):
-        cur = None
-        if dictFormat:
-            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-        else:
-            cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.Cursor)
+    def build_missing_page_relation(self, lang, page_id_iter):
+        for missing_page_ids in \
+                chunked(self._generate_missing_page_ids(lang, page_id_iter), 100):
+            self.multiInsert('page_lang_relation', \
+                    ['lang', 'lang_page_id'], \
+                    [[lang, page_id] for page_id in missing_page_ids] )
 
-        cur.execute(query, args)
-        rt = cur.fetchall()
-        cur.close()
-        return rt
 
-    def commit(self):
-        print('commit')
-        self.write_conn.commit()
-        self.read_conn.close()
-        self.read_conn = self.openConn()
 
 

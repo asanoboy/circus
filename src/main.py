@@ -198,10 +198,11 @@ def updateCatInfoFeatured(wiki_db, table='an_category_info'):
 #def updateAllCategoryRelations():
 #    return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
-def syncMaster(wiki_db):
-    pageIter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
-    for pages in chuncked(pageIter, 100):
-        pass
+def sync_master(lang, wiki_db, master_db):
+    page_iter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
+    page_id_iter = map(lambda r: r['page_id'], page_iter)
+    master_db.build_missing_page_relation(lang, page_id_iter)
+    master_db.commit()
 
 #def maxNodeId():
 #    cur.execute(sqlStr('select max(node_id) max from integrated.node'))
@@ -280,14 +281,15 @@ def syncMaster(wiki_db):
 
 if __name__ == '__main__':
     wiki_db = WikiDB('jawiki')
-    print('buildInfoEx')
-    buildInfoEx(wiki_db)
-    print('buildPageEx')
-    buildPageEx(wiki_db)
-    print('buildCatInfo')
-    buildCatInfo(wiki_db)
+    #print('buildInfoEx')
+    #buildInfoEx(wiki_db)
+    #print('buildPageEx')
+    #buildPageEx(wiki_db)
+    #print('buildCatInfo')
+    #buildCatInfo(wiki_db)
 
-    #syncMaster(wiki_db)
+    master_db = MasterWikiDB('wikimaster')
+    sync_master('ja', wiki_db, master_db)
     #buildNodeByPage(wiki_db)
     #buildNodeByCategory(wiki_db)
     #buildFeatureNode(wiki_db)
