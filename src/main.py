@@ -198,10 +198,72 @@ def updateCatInfoFeatured(wiki_db, table='an_category_info'):
 #def updateAllCategoryRelations():
 #    return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
-def sync_master(lang, wiki_db, master_db):
+def sync_master(lang, imported_langs, wiki_db, master_db):
+    other_langs = [l for l in imported_langs if l != lang]
+    lang_to_wiki_db = { l: WikiDB(l) for l in other_langs}
+
     page_iter = wiki_db.allFeaturedPageGenerator(dictFormat=True)
     page_id_iter = map(lambda r: r['page_id'], page_iter)
-    master_db.build_missing_page_relation(lang, page_id_iter)
+    missing_page_id_iter = master_db.missing_page_ids_generator(lang, page_id_iter)
+    #linked_other_lang_page_infos_iter = wiki_db.other_lang_page_infos_generator(missing_page_id_iter)
+
+    master_id_and_lang_id_list = []
+    new_lang_id_list = []
+    for missing_page_id in missing_page_id_iter:
+        other_lang_page_infos = wiki_db.selectAndFetchAll("""
+            select ll_from orig_id, ll_title title, ll_lang lang from langlinks
+            where ll_from = %s
+        """, (missing_page_id, ))
+    #for other_lang_page_infos in linked_other_lang_page_infos_iter:
+        imported_infos = [ r for r in other_lang_page_infos if r['lang'] in imported_langs]
+        found_master_page_id = None
+        for link_info in imported_infos:
+            linked_lang = link_info['lang']
+            db = lang_to_wiki_db[linked_lang]
+            res = db.selectAndFetchAll("""
+                select p.page_id from page p
+                inner join an_page ap on p.page_id = ap.page_id
+                inner join an_info ai on ai.name = ap.infotype
+                where p.title = %s and p.namespace = 0 and ai.featured = 1
+            """, (link_info['title'],))
+            if len(res) == 1:
+                lang_page_id = res[0]['page_id']
+                pid_rs = master_db.selectAndFetchAll("""
+                    select page_id master_page_id from page_lang_relation
+                    where lang = %s and lang_page_id = %s
+                """, (linked_lang, lang_page_id))
+                if len(pid_rs) == 1:
+                    found_master_page_id = pid_rs[0]['master_page_id']
+                elif len(pid_rs) > 1:
+                    raise Exception('Invalid')
+
+            elif len(res) > 1:
+                raise Exception('Invalid')
+
+        if found_master_page_id:
+            master_id_and_lang_id_list.append([found_master_page_id, missing_page_id])
+        else:
+            new_lang_id_list.append(missing_page_id)
+
+
+    res = master_db.selectAndFetchAll("""
+        select max(page_id) max from page
+    """)
+    max_page_id = res[0]['max'] if res[0]['max'] is not None else 0
+    for lang_page_ids in chunked(new_lang_id_list, 100):
+        start_page_id = max_page_id + 1
+        data = [ [i+start_page_id, pid] for i, pid in enumerate(lang_page_ids)]
+        master_db.multiInsert('page', \
+                ['page_id'], \
+                [[d[0],] for d in data])
+        master_id_and_lang_id_list += data
+        max_page_id += len(data)
+
+    for values in chunked(master_id_and_lang_id_list, 100):
+        master_db.multiInsert('page_lang_relation', \
+                ['page_id', 'lang_page_id', 'lang'], \
+                [[r[0], r[1], lang] for r in values] )
+
     master_db.commit()
 
 #def maxNodeId():
@@ -280,7 +342,8 @@ def sync_master(lang, wiki_db, master_db):
 #    pass # later
 
 if __name__ == '__main__':
-    wiki_db = WikiDB('jawiki')
+    imported_langs = ['ja', 'pt']
+    wiki_db = WikiDB('ja')
     #print('buildInfoEx')
     #buildInfoEx(wiki_db)
     #print('buildPageEx')
@@ -289,7 +352,7 @@ if __name__ == '__main__':
     #buildCatInfo(wiki_db)
 
     master_db = MasterWikiDB('wikimaster')
-    sync_master('ja', wiki_db, master_db)
+    sync_master('ja', imported_langs, wiki_db, master_db)
     #buildNodeByPage(wiki_db)
     #buildNodeByCategory(wiki_db)
     #buildFeatureNode(wiki_db)

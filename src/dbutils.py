@@ -170,8 +170,9 @@ class BaseDB:
 
 
 class WikiDB(BaseDB):
-    def __init__(self, dbname):
-        super().__init__(dbname)
+    def __init__(self, lang):
+        self.lang = lang
+        super().__init__('%swiki' % (lang, ))
 
     def allCategoryDataGenerator(self):
         for cols in selectGenerator(self.openConn, 'category c', \
@@ -288,11 +289,18 @@ class WikiDB(BaseDB):
         else:
             return False 
 
+#    def other_lang_page_infos_generator(self, page_id):
+#            rs = self.selectAndFetchAll("""
+#                select ll_from orig_id, ll_title title, ll_lang lang from langlinks
+#                where ll_from = %s
+#            """, (page_id, ))
+#            return rs
+
 class MasterWikiDB(BaseDB):
     def __init__(self, dbname):
         super().__init__(dbname)
 
-    def _generate_missing_page_ids(self, lang, page_id_iter):
+    def missing_page_ids_generator(self, lang, page_id_iter):
         for page_ids in chunked(page_id_iter, 10):
             records = self.selectAndFetchAll("""
                 select lang_page_id from page_lang_relation
@@ -306,7 +314,7 @@ class MasterWikiDB(BaseDB):
 
     def build_missing_page_relation(self, lang, page_id_iter):
         for missing_page_ids in \
-                chunked(self._generate_missing_page_ids(lang, page_id_iter), 100):
+                chunked(self.missing_page_ids_generator(lang, page_id_iter), 100):
             self.multiInsert('page_lang_relation', \
                     ['lang', 'lang_page_id'], \
                     [[lang, page_id] for page_id in missing_page_ids] )
