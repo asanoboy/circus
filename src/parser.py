@@ -39,7 +39,7 @@ def getBracketTexts(text):
                     currentPos = nextEndPos + 2
                     nextEndPos = text.find("}}", currentPos)
     except:
-        print("Can't parse wiki text.")
+        #print("Can't parse wiki text.")
         pass # workaround
     return result
 

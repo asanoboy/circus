@@ -1,5 +1,7 @@
 import MySQLdb.cursors
 from itertools import chain
+from models import Page, createPageInfoByBracketText
+from parser import getBracketTexts, removeComment
 
 class TableIndex:
     def __init__(self, name, isUnique):
@@ -84,33 +86,33 @@ class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     pass
 
 def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set()):
-    _conn = openConn()
-    with _conn:
-        _cur = _conn.cursor(cursorclass=TupleUseResultCursor)
-        sql = """
-            select %s from %s %s
-            """ % (','.join(cols), table, ' '.join(joins))
-        if cond:
-            sql += " where %s " % (cond,)
-        if order:
-            sql += " order by %s " % (order,)
+    conn = openConn()
+    cur = conn.cursor(cursorclass=TupleUseResultCursor)
+    sql = """
+        select %s from %s %s
+        """ % (','.join(cols), table, ' '.join(joins))
+    if cond:
+        sql += " where %s " % (cond,)
+    if order:
+        sql += " order by %s " % (order,)
 
-        print(sql)
-        _cur.execute(sqlStr(sql), arg)
-        cnt = 0
-        while 1:
-            cnt += 1
-            if cnt % 100 == 0:
-                #print(cnt)
-                pass
+    print(sql)
+    cur.execute(sqlStr(sql), arg)
+    cnt = 0
+    while 1:
+        cnt += 1
+        if cnt % 100 == 0:
+            #print(cnt)
+            pass
 
-            rt = _cur.fetchone()
-            if rt:
-                yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
-            else:
-                break
+        rt = cur.fetchone()
+        if rt:
+            yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
+        else:
+            break
 
-        _cur.close()
+    cur.close()
+    conn.close()
 
 #def queryMultiInsert(cur, table, cols, valuesList):
 #    cur.execute(sqlStr(("""
@@ -206,6 +208,47 @@ class WikiDB:
                 order='c.cat_id asc, p.page_id asc', arg=(infotype,)):
             yield cols
 
+    def _createPageInfoByPageWikiText(self, text, allowedNames):
+        bracketTexts = getBracketTexts(text)
+        infos = [createPageInfoByBracketText(t, allowedNames) for t in bracketTexts]
+        infos = [i for i in infos if i]
+        if len(infos) == 0:
+            return False
+        if len(infos) == 1:
+            info = infos[0]
+        else:
+            info = infos[0] # Apply first info.
+
+        while 1:
+            res = self.selectAndFetchAll(sqlStr("""
+                select ito.name from an_info ifrom
+                inner join an_info ito on ifrom.redirect_to = ito.text_id
+                where ifrom.name = %s
+            """), (info.name,))
+            if len(res) == 1:
+                info.name = res[0]['name']
+                continue
+            else:
+                break
+        return info
+
+    def createPageByTitle(self, title, allowedInfoNames=False):
+        res = self.selectAndFetchAll(sqlStr("""
+            select t.old_text wiki, p.page_id id from page p 
+            inner join revision r on r.rev_page = p.page_id
+            inner join text t on t.old_id = r.rev_text_id
+            where p.page_title = %s and p.page_namespace = 0
+            """), (title,))
+        if len(res) > 0:
+            text = res[0]['wiki'].decode('utf-8')
+            text = removeComment(text)
+            info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
+            if not info:
+                return False
+            return Page(res[0]['id'], title, len(text), info)
+        else:
+            return False 
+
     def multiInsert(self, table, cols, valuesList):
         cur = self.write_conn.cursor()
         cur.execute(sqlStr(("""
@@ -235,6 +278,9 @@ class WikiDB:
         return rt
 
     def commit(self):
+        print('commit')
         self.write_conn.commit()
+        self.read_conn.close()
+        self.read_conn = self.openConn()
 
 

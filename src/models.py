@@ -52,4 +52,22 @@ class Page:
                 currentPos = endBracketPos + 2
         raise
 
+def createPageInfoByBracketText(text, allowedNames=False):
+    pos = text.find('|')
+    if pos == -1: 
+        return False
+
+    name = text[:pos].strip().replace(' ', '_') \
+        .replace('　', '_') # multibyte space
+    
+    if allowedNames != False:
+        if name not in allowedNames:
+            return False
+
+    text = text[pos+1:]
+    keyValue = { elems[0].strip(): elems[1].strip() for elems in \
+        [ part.split('=') for part in text.split('|') if part.find('=')>=0 ] \
+        if len(elems) == 2 }
+    return PageInfo(name, keyValue)
+    
 
