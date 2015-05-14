@@ -9,20 +9,13 @@ from consts import valid_infotypes, valid_categories
 from numerical import *
 from parser import *
 
-def openConn():
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db="jawiki", charset='utf8')
-
-conn = openConn()
-cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-
-def selectTextByTitle(title, namespace):
-    cur.execute(sqlStr("""
+def selectTextByTitle(wiki_db, title, namespace):
+    res = wiki_db.selectAndFetchAll(sqlStr("""
         select t.old_text wiki, p.page_id id from page p 
         inner join revision r on r.rev_page = p.page_id
         inner join text t on t.old_id = r.rev_text_id
         where p.page_title = %s and p.page_namespace = %s
         """), (title, namespace))
-    res = cur.fetchall()
     if len(res) > 0:
         return res[0]['wiki'].decode('utf-8')
     return False
@@ -108,7 +101,7 @@ def updateInfoRedirect(wiki_db):
     p = re.compile('#redirect\s*\[\[(template:)?\s*(.+)\]\]', re.IGNORECASE)
     for infoRecord in infoRecordIter:
         infoName = infoRecord['name']
-        text = selectTextByTitle(infoName, 10)
+        text = selectTextByTitle(wiki_db, infoName, 10)
         m = p.search(text)
         if m:
             redirectName = m.group(2).replace(' ', '_')
