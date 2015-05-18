@@ -89,6 +89,9 @@ class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
 def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set()):
     conn = openConn()
     cur = conn.cursor(cursorclass=TupleUseResultCursor)
+    cur.execute('set net_read_timeout = 9999')
+    cur.execute('set net_write_timeout = 9999')
+
     sql = """
         select %s from %s %s
         """ % (','.join(cols), table, ' '.join(joins))
@@ -102,8 +105,8 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
     cnt = 0
     while 1:
         cnt += 1
-        if cnt % 100 == 0:
-            #print(cnt)
+        if cnt % 1000 == 0:
+            print(cnt)
             pass
 
         rt = cur.fetchone()

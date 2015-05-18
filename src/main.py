@@ -6,8 +6,24 @@ from circus_itertools import lazy_chunked as chunked
 from models import *
 from dbutils import *
 from consts import valid_infotypes, valid_categories
-from numerical import *
+#from numerical import *
 from parser import *
+
+class Lap:
+    def __init__(self, tag):
+        self.start = None
+        self.tag = tag
+
+    def __enter__(self):
+        self.start = time.time()
+        print('[%s]: start' % (self.tag,))
+        
+    def __exit__(self, exception_type, exception_value, traceback):
+        interval = time.time() - self.start
+        print('[%s]: elapsed time = %d' % (self.tag, interval))
+ 
+def lap(tag):
+    return Lap(tag)
 
 def selectTextByTitle(wiki_db, title, namespace):
     res = wiki_db.selectAndFetchAll(sqlStr("""
@@ -98,7 +114,7 @@ def updateInfoFeatured(wiki_db):
 
 def updateInfoRedirect(wiki_db):
     infoRecordIter = wiki_db.allInfoRecordGenerator()
-    p = re.compile('#redirect\s*\[\[(template:)?\s*(.+)\]\]', re.IGNORECASE)
+    p = re.compile('#redirect:?\s*\[\[(template:)?\s*(.+)\]\]', re.IGNORECASE)
     for infoRecord in infoRecordIter:
         infoName = infoRecord['name']
         text = selectTextByTitle(wiki_db, infoName, 10)
@@ -334,18 +350,23 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
 #    pass # later
 
 if __name__ == '__main__':
-    imported_langs = ['ja', 'pt']
-    lang = 'pt'
+    imported_langs = ['en']
+    lang = 'en'
     wiki_db = WikiDB(lang)
-    #print('buildInfoEx')
-    #buildInfoEx(wiki_db)
-    #print('buildPageEx')
-    #buildPageEx(wiki_db)
-    #print('buildCatInfo')
-    #buildCatInfo(wiki_db)
+    with lap('buildInfo'):
+        buildInfoEx(wiki_db)
+        pass
 
-    master_db = MasterWikiDB('wikimaster')
-    sync_master(lang, imported_langs, wiki_db, master_db)
+    with lap('buildPageEx'):
+        buildPageEx(wiki_db)
+        pass
+
+    with lap('buildCatInfo'):
+        buildCatInfo(wiki_db)
+        pass
+
+    #master_db = MasterWikiDB('wikimaster')
+    #sync_master(lang, imported_langs, wiki_db, master_db)
     #buildNodeByPage(wiki_db)
     #buildNodeByCategory(wiki_db)
     #buildFeatureNode(wiki_db)
