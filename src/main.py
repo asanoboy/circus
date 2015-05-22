@@ -101,16 +101,7 @@ def buildInfoEx(wiki_db):
         wiki_db.multiInsert('an_info', ['text_id', 'name'], datas)
 
     wiki_db.commit()
-    updateInfoFeatured(wiki_db)
     updateInfoRedirect(wiki_db)
-
-def updateInfoFeatured(wiki_db):
-    wiki_db.updateQuery(sqlStr("""
-        update an_info
-        set featured = case when %s then 1 else 0 end
-        """ % (' or '.join(['name = %s'] * len(valid_infotypes)), )), \
-        set(valid_infotypes))
-    wiki_db.commit()
 
 def updateInfoRedirect(wiki_db):
     infoRecordIter = wiki_db.allInfoRecordGenerator()
@@ -146,7 +137,7 @@ def updateInfoRedirect(wiki_db):
                 raise Exception(msg)
     wiki_db.commit()
 
-def buildCatInfo(wiki_db, table='an_category_info'):
+def buildCatInfo(wiki_db):
 
     catDataIter = wiki_db.allCategoryDataGenerator()
     catIter = filter(lambda x: x, map(createCategoryWithoutStub, catDataIter))
@@ -160,17 +151,24 @@ def buildCatInfo(wiki_db, table='an_category_info'):
             """), (cat.name, ))
         valuesList = [[cat.id, record['infotype'], record['page_num']] for record in records]
         if len(valuesList) > 0:
-            wiki_db.multiInsert(table, ['cat_id', 'infotype', 'page_num'], valuesList)
+            wiki_db.multiInsert('an_category_info', ['cat_id', 'infotype', 'page_num'], valuesList)
 
     wiki_db.commit()
-    updateCatInfoFeatured(wiki_db, table)
 
-def updateCatInfoFeatured(wiki_db, table='an_category_info'):
+def updateFeatured(wiki_db):
+    infotypes = valid_infotypes(wiki_db.lang)
     wiki_db.updateQuery(sqlStr("""
-        update %s
+        update an_info
         set featured = case when %s then 1 else 0 end
-        """ % (table, ' or '.join(['infotype = %s'] * len(valid_infotypes)), )), \
-        set(valid_infotypes))
+        """ % (' or '.join(['name = %s'] * len(infotypes)), )), \
+        set(infotypes))
+    wiki_db.commit()
+
+    wiki_db.updateQuery(sqlStr("""
+        update an_category_info 
+        set featured = case when %s then 1 else 0 end
+        """ % (' or '.join(['infotype = %s'] * len(infotypes)), )), \
+        set(infotypes))
     wiki_db.commit()
 
 #def updateCategoryRelationsByInfotype(infotype):
@@ -350,23 +348,30 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
 #    pass # later
 
 if __name__ == '__main__':
-    imported_langs = ['en']
-    lang = 'en'
+    imported_langs = ['en', 'ja']
+    lang = 'ja'
     wiki_db = WikiDB(lang)
     with lap('buildInfo'):
-        buildInfoEx(wiki_db)
+        #buildInfoEx(wiki_db)
         pass
 
     with lap('buildPageEx'):
-        buildPageEx(wiki_db)
+        #buildPageEx(wiki_db)
         pass
 
     with lap('buildCatInfo'):
-        buildCatInfo(wiki_db)
+        #buildCatInfo(wiki_db)
         pass
 
-    #master_db = MasterWikiDB('wikimaster')
-    #sync_master(lang, imported_langs, wiki_db, master_db)
+    with lap('updateFeatured'):
+        #updateFeatured(wiki_db)
+        pass
+
+    master_db = MasterWikiDB('wikimaster')
+    with lap('sync_master'):
+        sync_master(lang, imported_langs, wiki_db, master_db)
+        pass
+
     #buildNodeByPage(wiki_db)
     #buildNodeByCategory(wiki_db)
     #buildFeatureNode(wiki_db)

@@ -1,4 +1,5 @@
 import MySQLdb.cursors
+import time
 from itertools import chain
 from models import Page, createPageInfoByBracketText
 from parser import getBracketTexts, removeComment
@@ -103,10 +104,13 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
     print(sql)
     cur.execute(sqlStr(sql), arg)
     cnt = 0
+    last_time = time.time()
     while 1:
         cnt += 1
         if cnt % 1000 == 0:
-            print(cnt)
+            now_time = time.time()
+            print(cnt, ':%s sec' % (now_time - last_time,))
+            last_time = now_time
             pass
 
         rt = cur.fetchone()
