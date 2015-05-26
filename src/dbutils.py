@@ -314,24 +314,24 @@ class MasterWikiDB(BaseDB):
     def __init__(self, dbname):
         super().__init__(dbname)
 
-    def missing_page_ids_generator(self, lang, page_id_iter):
-        for page_ids in chunked(page_id_iter, 10):
+    def missing_page_generator(self, lang, page_iter):
+        for pages in chunked(page_iter, 10):
             records = self.selectAndFetchAll("""
                 select lang_page_id from page_lang_relation
                 where lang = %s and lang_page_id in (
-                """ + ','.join([str(d) for d in page_ids]) + ')', \
+                """ + ','.join([str(page['page_id']) for page in pages]) + ')', \
                 (lang, ) )
             found_ids = [r['lang_page_id'] for r in records]
-            for page_id in page_ids:
-                if page_id not in found_ids:
-                    yield page_id
+            for page in pages:
+                if page['page_id'] not in found_ids:
+                    yield page
 
-    def build_missing_page_relation(self, lang, page_id_iter):
-        for missing_page_ids in \
-                chunked(self.missing_page_ids_generator(lang, page_id_iter), 100):
-            self.multiInsert('page_lang_relation', \
-                    ['lang', 'lang_page_id'], \
-                    [[lang, page_id] for page_id in missing_page_ids] )
+    #def build_missing_page_relation(self, lang, page_id_iter):
+    #    for missing_page_ids in \
+    #            chunked(self.missing_page_ids_generator(lang, page_id_iter), 100):
+    #        self.multiInsert('page_lang_relation', \
+    #                ['lang', 'lang_page_id'], \
+    #                [[lang, page_id] for page_id in missing_page_ids] )
 
 
 

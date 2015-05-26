@@ -15,18 +15,12 @@ class PageInfo:
         self.keyValue = keyValue
 
 class Page:
-    id = False
-    title = ''
-    info = False
-    text = False
     contentlength = 0
     def __init__(self, id, title, contentlength, info):
-        self.title = title
         self.id = id
-        self.info = info
+        self.title = title
         self.contentlength = contentlength
-
-
+        self.info = info
         
     @staticmethod
     def _findInfobox(text):
