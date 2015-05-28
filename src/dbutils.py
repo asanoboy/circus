@@ -290,13 +290,13 @@ class WikiDB(BaseDB):
                 break
         return info
 
-    def createPageByTitle(self, title, allowedInfoNames=False):
+    def createPageByTitle(self, title, allowedInfoNames=False, namespace=0):
         res = self.selectAndFetchAll(sqlStr("""
             select t.old_text wiki, p.page_id id from page p 
             inner join revision r on r.rev_page = p.page_id
             inner join text t on t.old_id = r.rev_text_id
-            where p.page_title = %s and p.page_namespace = 0
-            """), (title,))
+            where p.page_title = %s and p.page_namespace = %s
+            """), (title, namespace))
         if len(res) > 0:
             text = res[0]['wiki'].decode('utf-8')
             text = removeComment(text)
