@@ -231,14 +231,14 @@ class WikiDB(BaseDB):
 
     def allFeaturedPageGenerator(self, dictFormat=False, featured=True):
         for cols in selectGenerator(self.openConn, 'an_page p', \
-                cols=['p.page_id', 'p.name', 'p.infotype'], \
+                cols=['p.page_id', 'p.name', 'p.infotype', 'p.infocontent'], \
                 joins=[\
                     'inner join an_info i on i.name = p.infotype', \
                 ], \
                 cond= 'i.featured = 1' if featured else None, \
                 order='p.page_id asc'):
             if dictFormat:
-                yield dict(zip(['page_id', 'name', 'infotype'], cols))
+                yield dict(zip(['page_id', 'name', 'infotype', 'infocontent'], cols))
             else:
                 yield cols
 
@@ -290,19 +290,21 @@ class WikiDB(BaseDB):
                 break
         return info
 
-    def createPageByTitle(self, title, allowedInfoNames=False, namespace=0):
+    def createPageByTitle(self, title, allowedInfoNames=False, namespace=0, with_info=True):
         res = self.selectAndFetchAll(sqlStr("""
             select t.old_text wiki, p.page_id id from page p 
-            inner join revision r on r.rev_page = p.page_id
-            inner join text t on t.old_id = r.rev_text_id
+            left join revision r on r.rev_page = p.page_id
+            left join text t on t.old_id = r.rev_text_id
             where p.page_title = %s and p.page_namespace = %s
             """), (title, namespace))
         if len(res) > 0:
             text = res[0]['wiki'].decode('utf-8')
             text = removeComment(text)
-            info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
-            if not info:
-                return False
+            info = None
+            if with_info:
+                info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
+                if not info:
+                    return False
             return Page(res[0]['id'], title, text, info)
         else:
             return False 

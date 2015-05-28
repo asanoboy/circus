@@ -35,9 +35,11 @@ def find_dumps(path):
             rs['langlinks'] = file
         elif file.endswith('image.sql.gz'):
             rs['image'] = file
+        elif file.endswith('imagelinks.sql.gz'):
+            rs['imagelinks'] = file
         elif file.endswith('pages-articles.xml.bz2'):
             rs['page'] = file
-    if len(rs) == 6:
+    if len(rs) == 7:
         return { key: os.path.join(path, f) for key, f in rs.items()}
     else:
         return None
@@ -165,8 +167,9 @@ if __name__ == '__main__':
     #import_pages(mysql_jar, wiki_jar, args['db'],  files['page'])
     #import_from_sql(args['db'], 'category', files['category'], work_dir)
     #import_from_sql(args['db'], 'langlinks', files['langlinks'], work_dir)
-    import_from_sql(args['db'], 'image', files['image'], work_dir)
+    import_from_sql(args['db'], 'imagelinks', files['imagelinks'], work_dir)
     sys.exit()
+    import_from_sql(args['db'], 'image', files['image'], work_dir)
     import_from_sql(args['db'], 'categorylinks', files['categorylinks'], work_dir, no_index=True)
     import_from_sql(args['db'], 'pagelinks', files['pagelinks'], work_dir, no_index=True)
 

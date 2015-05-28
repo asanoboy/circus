@@ -2,6 +2,7 @@ import re, argparse, os, gzip, urllib
 import http.client
 from dbutils import *
 from circus_itertools import lazy_chunked as chunked
+from fileutils import save_content
 
 
 def get_content(path):
@@ -27,19 +28,6 @@ def get_content(path):
 #    if exists:
 #        print('already exists: %s' % (dest_file,))
 #    return exists
-
-def save_content(path, file_content):
-    dir_path = os.path.dirname(path)
-
-    #dest_dir = os.path.join(dump_dir, str(year), '%02d' % (month,))
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-
-    #dest_file = os.path.join(dest_dir, file_name)
-    f = open(path, 'w')
-    f.write(file_content)
-    f.close()
-    print('save:', path)
 
 years = range(2007, 2015 + 1)
 months = range(1, 12 + 1)
