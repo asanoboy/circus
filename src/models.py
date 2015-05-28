@@ -15,11 +15,12 @@ class PageInfo:
         self.keyValue = keyValue
 
 class Page:
-    contentlength = 0
-    def __init__(self, id, title, contentlength, info):
+    #def __init__(self, id, title, contentlength, info):
+    def __init__(self, id, title, text, info):
         self.id = id
         self.title = title
-        self.contentlength = contentlength
+        self.contentlength = len(text)
+        self.text = text
         self.info = info
         
     @staticmethod

@@ -144,13 +144,14 @@ class BaseDB:
     def openConn(self):
         return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
 
-    def multiInsert(self, table, cols, valuesList):
+    def multiInsert(self, table, cols, valuesList, on_duplicate=None):
         cur = self.write_conn.cursor()
         cur.execute(sqlStr(("""
             insert into %s (%s)
             values
             """ % (table, ','.join(cols))) \
-            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
+            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))) \
+            + ( (' on duplicate key update ' + on_duplicate) if on_duplicate is not None else ''), \
             tuple(chain.from_iterable(valuesList)) \
         )
         cur.close()
@@ -190,7 +191,7 @@ class WikiDB(BaseDB):
         self.lang = lang
         super().__init__('%swiki' % (lang, ))
 
-    def allCategoryDataGenerator(self):
+    def allCategoryDataGenerator(self, dict_format=False):
         for cols in selectGenerator(self.openConn, 'category c', \
                 cols=['cat_id', 'cat_title', 't.old_text'], \
                 joins=[ \
@@ -199,7 +200,10 @@ class WikiDB(BaseDB):
                     'inner join text t on t.old_id = r.rev_text_id', \
                 ], \
                 order='cat_id asc'):
-            yield (cols[0], cols[1], cols[2])
+            if dict_format:
+                yield {'cat_id': cols[0], 'title': cols[1], 'text': cols[2]}
+            else:
+                yield (cols[0], cols[1], cols[2])
 
     def allPageTitlesGenerator(self):
         for cols in selectGenerator(self.openConn, 'page', cols=['page_title'], cond='page_namespace = 0', \
@@ -299,7 +303,7 @@ class WikiDB(BaseDB):
             info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
             if not info:
                 return False
-            return Page(res[0]['id'], title, len(text), info)
+            return Page(res[0]['id'], title, text, info)
         else:
             return False 
 

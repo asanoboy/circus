@@ -36,3 +36,10 @@ create table an_category_node_relation (
     node_id int NOT NULL UNIQUE,
     PRIMARY KEY(cat_id, node_id)
 );
+
+create table an_pagecount (
+    name varchar(255) not null,
+    year int not null,
+    count int not null,
+    primary key(name, year)
+);
