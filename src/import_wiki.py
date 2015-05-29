@@ -2,6 +2,7 @@ import argparse, sys, os, os.path, subprocess, shlex
 import MySQLdb
 import MySQLdb.cursors
 from dbutils import TableIndexHolder
+from processutils import command
 
 def open_db(db):
     return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=db, charset='utf8')
@@ -9,17 +10,6 @@ def open_db(db):
 def open_cur(conn):
     return conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
 
-def command(cmd, output=True):
-    print(cmd)
-    if output:
-        p = subprocess.Popen(cmd, shell=True, stdout=sys.stdout, stderr=sys.stderr) 
-        p.wait()
-        return
-    else:
-        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
-        p.wait()
-        stdout_data, stderr_data = p.communicate()
-        return stdout_data.decode('utf-8')
 
 def find_dumps(path):
     files = os.listdir(path)

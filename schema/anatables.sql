@@ -38,8 +38,15 @@ create table an_category_node_relation (
 );
 
 create table an_pagecount (
-    name varchar(255) not null,
+    page_id int NOT NULL,
     year int not null,
     count int not null,
-    primary key(name, year)
+    primary key(page_id, year)
+);
+
+create table an_catcount (
+    cat_id int NOT NULL,
+    year int not null,
+    count int not null,
+    primary key(cat_id, year)
 );

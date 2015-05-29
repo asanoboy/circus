@@ -104,18 +104,6 @@ def insert_pagecount(langs, record_iter):
 
 def save_to_local(dump_dir, langs, record_iter):
     lang_to_db = {}
-    lang_to_page_dict = {}
-    lang_to_category_dict = {}
-    for lang in langs:
-        db = WikiDB(lang)
-        lang_to_db[lang] = db
-        category_dict = {}
-        for data in db.allCategoryDataGenerator(dict_format=True):
-            category_dict[data['title']] = None
-
-        page_dict = {}
-        for title in db.allPageTitlesGenerator():
-            page_dict[title] = None
 
     last_path = None
     lines = []

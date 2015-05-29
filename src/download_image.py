@@ -1,4 +1,4 @@
-import os, hashlib, argparse, http.client
+import os, hashlib, argparse, http.client, time
 from dbutils import WikiDB
 from fileutils import save_content
 
@@ -17,9 +17,24 @@ def get_content(path):
         res.close()
         conn.close()
         return None
-    data = res.read()
+
+    data = None
+    trycnt = 5
+    while trycnt>0:
+        try:
+            data = res.read()
+            break
+        except http.client.IncompleteRead as e:
+            print(e)
+        time.sleep(1)
+        trycnt -= 1
+
     res.close()
     conn.close()
+    if data is None:
+        print('Can\'t read: ', path)
+        return None
+
     return data
 
 if __name__ == '__main__':
@@ -34,7 +49,7 @@ if __name__ == '__main__':
     dest_dir = os.path.join(current_dir, args['path'])
     
     db = WikiDB(lang)
-    pages = db.allFeaturedPageGenerator(dictFormat=True, featured=False)
+    pages = db.allFeaturedPageGenerator(dictFormat=True)
     for page in pages:
         records = db.selectAndFetchAll("""
         select il.il_to, p.page_id from imagelinks il
