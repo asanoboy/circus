@@ -1,4 +1,4 @@
-import argparse, gzip, os, re
+import argparse, gzip, os, re, urllib.parse
 from dbutils import WikiDB
 from fileutils import find, Workspace
 from processutils import command
@@ -108,13 +108,29 @@ if __name__ == '__main__':
         page_to_id = data['page_to_id']
         if path.lower().startswith('category:'):
             cat_name = path[len('category:'):]
+            cat_id = None
             if cat_name in cat_to_id:
-                insert_cat_buffer[lang].append({'cat_id': cat_to_id[cat_name], 'year': year, 'count': count})
+                cat_id = cat_to_id[cat_name]
+            else:
+                unquoted_name = urllib.parse.unquote(cat_name)
+                if unquoted_name in cat_to_id:
+                    cat_id = cat_to_id[unquoted_name]
+
+            if cat_id is not None:
+                insert_cat_buffer[lang].append({'cat_id': cat_id, 'year': year, 'count': count})
                 hit_count += 1
         
         else:
+            page_id = None
             if path in page_to_id:
-                insert_page_buffer[lang].append({'page_id': page_to_id[path], 'year': year, 'count': count})
+                page_id = page_to_id[path]
+            else:
+                unquoted_name = urllib.parse.unquote(path)
+                if unquoted_name in page_to_id:
+                    page_id = page_to_id[unquoted_name]
+
+            if page_id is not None:
+                insert_page_buffer[lang].append({'page_id': page_id, 'year': year, 'count': count})
                 hit_count += 1
 
         if len(insert_cat_buffer[lang]) >= 100:
