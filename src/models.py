@@ -70,18 +70,20 @@ def createPageInfoByBracketText(text, allowedNames=False):
         curly_pos = text.find('{{', search_pos)
         if curly_pos != -1 and curly_pos < separator_pos:
             end_pos = text.find('}}', curly_pos)
-            if end_pos == -1:
-                raise Exception('Not found "}}" in : %s', (text,))
-            search_pos = end_pos
-            continue
+            if end_pos >= 0:
+                search_pos = end_pos
+                continue
+            else:
+                print('Not found "}}" in : ', text)
 
         brace_pos = text.find('[[', search_pos)
         if brace_pos != -1 and brace_pos < separator_pos:
             end_pos = text.find(']]', brace_pos)
-            if end_pos == -1:
-                raise Exception('Not found "]]" in : %s', (text,))
-            search_pos = end_pos
-            continue
+            if end_pos >= 0:
+                search_pos = end_pos
+                continue
+            else:
+                print('Not found "]]" in : ', text)
 
         key_value_list.append(text[start_pos: separator_pos])
         start_pos = separator_pos + 1
