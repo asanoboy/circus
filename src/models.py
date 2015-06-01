@@ -59,10 +59,36 @@ def createPageInfoByBracketText(text, allowedNames=False):
         if name not in allowedNames:
             return False
 
-    text = text[pos+1:]
-    keyValue = { elems[0].strip(): elems[1].strip() for elems in \
-        [ part.split('=') for part in text.split('|') if part.find('=')>=0 ] \
-        if len(elems) == 2 }
+    key_value_list = []
+    start_pos = pos+1
+    search_pos = start_pos
+    while 1:
+        separator_pos = text.find('|', search_pos)
+        if separator_pos == -1:
+            break
+            
+        curly_pos = text.find('{{', search_pos)
+        if curly_pos != -1 and curly_pos < separator_pos:
+            end_pos = text.find('}}', curly_pos)
+            if end_pos == -1:
+                raise Exception('Not found "}}" in : %s', (text,))
+            search_pos = end_pos
+            continue
+
+        brace_pos = text.find('[[', search_pos)
+        if brace_pos != -1 and brace_pos < separator_pos:
+            end_pos = text.find(']]', brace_pos)
+            if end_pos == -1:
+                raise Exception('Not found "]]" in : %s', (text,))
+            search_pos = end_pos
+            continue
+
+        key_value_list.append(text[start_pos: separator_pos])
+        start_pos = separator_pos + 1
+        search_pos = start_pos
+
+    parts = [ part.split('=') for part in key_value_list if part.find('=')>=0 ]
+    keyValue = { elems[0].strip(): elems[1].strip() for elems in parts if len(elems) == 2 }
     return PageInfo(name, keyValue)
     
 
