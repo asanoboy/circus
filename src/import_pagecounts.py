@@ -2,11 +2,11 @@ import argparse, gzip, os, re, urllib.parse
 from dbutils import WikiDB
 from fileutils import find, Workspace
 from processutils import command
+from circus_itertools import lazy_chunked as chunked
 
 p = re.compile('([\d]{4})-([\d]{2})')
 
-def get_year_and_content(gz_file):
-    dirs = gz_file.split('/')
+def get_year_from_path(gz_file):
     year = None
     for part in gz_file.split('/'):
         m = p.search(part)
@@ -16,12 +16,16 @@ def get_year_and_content(gz_file):
 
     if year is None:
         raise Exception('Does not find year from', gz_file)
+
+    return year
         
+
+def get_content(gz_file):
     content = None
     with gzip.open(gz_file) as f:
         content = f.read().decode('utf-8')
 
-    return (year, content)
+    return content
 
 def info_generator_from_data_dir(data_dir):
     gz_files = find('*.gz', data_dir)
@@ -29,7 +33,8 @@ def info_generator_from_data_dir(data_dir):
 
     for gz_file in gz_files:
         print('File: ', gz_file)
-        year, content = get_year_and_content(gz_file)
+        year = get_year_from_path(gz_file)
+        content = get_content(gz_file)
 
         lines = content.split('\n')
         for line in lines:
@@ -75,6 +80,29 @@ def insert_cat(db, insert_buffer):
         'count = values(count) + count')
     db.commit()
 
+class CountHolder:
+    def __init__(self):
+        """
+        Means (content_id, year) => sum(count)
+        """
+        self.counts = {} 
+
+    def add(self, content_id, year, count):
+        count = int(count)
+        key = (content_id, year)
+        if key in self.counts:
+            self.counts[key] += count
+        else :
+            self.counts[key] = count
+    
+    def generate_record(self):
+        for key in self.counts:
+            data = self.counts[key]
+            content_id = key[0]
+            year = key[1]
+            count = self.counts[key]
+            yield [content_id, year, count]
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path')
@@ -91,8 +119,8 @@ if __name__ == '__main__':
     infos = info_generator_from_data_dir(data_dir)
     infos = filter(lambda n: n['lang'] in langs, infos)
 
-    insert_cat_buffer = { lang: [] for lang in langs }
-    insert_page_buffer = { lang: [] for lang in langs }
+    lang_to_page_count = { lang: CountHolder() for lang in langs }
+    lang_to_cat_count = { lang: CountHolder() for lang in langs }
     all_count = 0
     hit_count = 0
     for info in infos:
@@ -117,7 +145,7 @@ if __name__ == '__main__':
                     cat_id = cat_to_id[unquoted_name]
 
             if cat_id is not None:
-                insert_cat_buffer[lang].append({'cat_id': cat_id, 'year': year, 'count': count})
+                lang_to_cat_count[lang].add(cat_id, year, count)
                 hit_count += 1
         
         else:
@@ -130,16 +158,8 @@ if __name__ == '__main__':
                     page_id = page_to_id[unquoted_name]
 
             if page_id is not None:
-                insert_page_buffer[lang].append({'page_id': page_id, 'year': year, 'count': count})
+                lang_to_page_count[lang].add(page_id, year, count)
                 hit_count += 1
-
-        if len(insert_cat_buffer[lang]) >= 100:
-            insert_cat(db, insert_cat_buffer[lang])
-            insert_cat_buffer[lang] = []
-
-        if len(insert_page_buffer[lang]) >= 100:
-            insert_page(db, insert_page_buffer[lang])
-            insert_page_buffer[lang] = []
 
         all_count += 1
         if all_count % 100000 == 0:
@@ -147,17 +167,17 @@ if __name__ == '__main__':
 
     for lang in langs:
         db = lang_to_data[lang]['db']
-        if len(insert_cat_buffer[lang]) > 0:
-            insert_cat(db, insert_cat_buffer[lang])
+        for records in chunked(lang_to_cat_count[lang].generate_record(), 1000):
+            db.multiInsert('an_catcount', \
+                ['cat_id', 'year', 'count'], \
+                records, \
+                'count = values(count) + count')
+        db.commit()
 
-        if len(insert_page_buffer[lang]) > 0:
-            insert_page(db, insert_page_buffer[lang])
+        for records in chunked(lang_to_page_count[lang].generate_record(), 1000):
+            db.multiInsert('an_pagecount', \
+                ['page_id', 'year', 'count'], \
+                records, \
+                'count = values(count) + count')
+        db.commit()
 
-
-
-
-
-
-
-                
-                
