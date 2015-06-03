@@ -144,6 +144,9 @@ class BaseDB:
     def openConn(self):
         return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
 
+    def open_conn(self):
+        return self.openConn()
+
     def multiInsert(self, table, cols, valuesList, on_duplicate=None):
         cur = self.write_conn.cursor()
         cur.execute(sqlStr(("""
@@ -228,6 +231,14 @@ class WikiDB(BaseDB):
     def allInfoRecordGenerator(self):
         for cols in selectGenerator(self.openConn, 'an_info', cols=['text_id', 'name'], order='text_id asc'):
             yield {'text_id':cols[0], 'name':cols[1]}
+
+    def generate_pagelinks_record(self):
+        for cols in selectGenerator(self.openConn, 'pagelinks pl', \
+                cols=['pl.pl_from id_from', 'p.page_id id_to'], \
+                joins=[\
+                    'inner join page p on p.page_title = pl.pl_title and p.page_namespace = pl.pl_namespace',
+                ]):
+            yield cols
 
     def allFeaturedPageGenerator(self, dictFormat=False, featured=True):
         for cols in selectGenerator(self.openConn, 'an_page p', \

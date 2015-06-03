@@ -50,3 +50,16 @@ create table an_catcount (
     count int not null,
     primary key(cat_id, year)
 );
+
+create table an_feature_page (
+    page_id int NOT NULL,
+    target_infotype varchar(255) binary NOT NULL,
+    primary key(page_id, target_infotype)
+);
+
+create table an_pagelinks (
+    id_from int NOT NULL,
+    id_to int NOT NULL,
+    primary key(id_from, id_to),
+    index id_to(id_to)
+);

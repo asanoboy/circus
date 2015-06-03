@@ -1,6 +1,6 @@
 import MySQLdb
 import json
-import re
+import re, sys
 import time
 from circus_itertools import lazy_chunked as chunked
 from models import *
@@ -22,9 +22,6 @@ class Lap:
         interval = time.time() - self.start
         print('[%s]: elapsed time = %d' % (self.tag, interval))
  
-def lap(tag):
-    return Lap(tag)
-
 def selectTextByTitle(wiki_db, title, namespace):
     res = wiki_db.selectAndFetchAll(sqlStr("""
         select t.old_text wiki, p.page_id id from page p 
@@ -61,6 +58,21 @@ def selectTextByTitle(wiki_db, title, namespace):
 #            pages += selectPages(title, recursive - 1, joinedExcludePageTitles, joinedExcludeCategoryTitles)
 #
 #    return pages
+
+def buildPageLinks(wiki_db):
+    #holder = TableIndexHolder.open(wiki_db.open_conn, 'an_pagelinks')
+    #for records in chunked(wiki_db.generate_pagelinks_record(), 1000):
+    #    wiki_db.multiInsert('an_pagelinks', ['id_from', 'id_to'], records)
+    #wiki_db.commit()
+    #holder.close()
+    wiki_db.updateQuery("""
+    insert into an_pagelinks
+    select pl.pl_from id_from, p.page_id id_to from pagelinks pl
+    inner join page p on p.page_title = pl.pl_title and p.page_namespace = pl.pl_namespace
+    inner join an_page pfrom on pfrom.page_id = pl.pl_from
+    inner join an_page pto on pto.page_id = p.page_id
+    """)
+    wiki_db.commit()
 
 def selectAllInfoNames(wiki_db):
     records = wiki_db.selectAndFetchAll(sqlStr("""
@@ -170,6 +182,26 @@ def updateFeatured(wiki_db):
         """ % (' or '.join(['infotype = %s'] * len(infotypes)), )), \
         set(infotypes))
     wiki_db.commit()
+
+def gen_feature_page_record(wiki_db):
+    infotype_feature_to_target = {}
+    root_category_name_to_target_infotype = {}
+    if wiki_db.lang == 'ja':
+        pass
+    elif wiki_db.lang == 'en':
+        infotype_feature_to_target['Infobox_music_genre'] = 'Infobox_musical_artist'
+        root_category_name_to_target_infotype['Music_genres'] = 'Infobox_musical_artist'
+
+    for feature, target in infotype_feature_to_target.items():
+        res = wiki_db.selectAndFetchALL("""
+            select page_id from an_page 
+            where infotype = %s
+            """, (feature,), decode=True)
+        yield [res['page_id'], target]
+
+
+def build_feature_page(wiki_db):
+    pass
 
 #def updateCategoryRelationsByInfotype(infotype):
 #    pageIds = [] 
@@ -352,25 +384,31 @@ if __name__ == '__main__':
     imported_langs = ['en', 'ja']
     lang = 'en'
     wiki_db = WikiDB(lang)
-    with lap('buildInfo'):
+    with Lap('buildPageLinks'):
+        buildPageLinks(wiki_db)
+        pass
+
+    sys.exit()
+
+    with Lap('buildInfo'):
         #buildInfoEx(wiki_db)
         pass
 
-    with lap('buildPageEx'):
+    with Lap('buildPageEx'):
         #buildPageEx(wiki_db)
         pass
 
-    with lap('buildCatInfo'):
+    with Lap('buildCatInfo'):
         #buildCatInfo(wiki_db)
         pass
 
-    with lap('updateFeatured'):
+    with Lap('updateFeatured'):
         #updateFeatured(wiki_db)
         pass
 
     master_db = MasterWikiDB('wikimaster')
-    with lap('sync_master'):
-        sync_master(lang, imported_langs, wiki_db, master_db)
+    with Lap('sync_master'):
+        #sync_master(lang, imported_langs, wiki_db, master_db)
         pass
 
     #buildNodeByPage(wiki_db)
