@@ -63,3 +63,16 @@ create table an_pagelinks (
     primary key(id_from, id_to),
     index id_to(id_to)
 );
+
+create view an_pagelinks_view as
+select pl.*,
+pfrom.name name_from, pfrom.infotype info_from,
+pto.name name_to, pto.infotype info_to from an_pagelinks pl
+inner join an_page pfrom on pfrom.page_id = pl.id_from
+inner join an_page pto on pto.page_id = pl.id_to
+;
+
+create view page_view as
+select * from page
+where page_namespace = 0
+;
