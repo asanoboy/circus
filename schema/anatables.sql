@@ -64,10 +64,44 @@ create table an_pagelinks (
     index id_to(id_to)
 );
 
+create table an_pagelinks_filtered (
+    id_from int NOT NULL,
+    id_to int NOT NULL,
+    in_infobox tinyint NOT NULL,
+    pos_info int NULL,
+    pos_content int NOT NULL,
+    primary key(id_from, id_to),
+    index id_to(id_to)
+);
+
+create table an_pagelinks_featured (
+    id_from int NOT NULL,
+    id_to int NOT NULL,
+    strength float NOT NULL DEFAULT 0,
+    primary key(id_from, id_to),
+    index id_to(id_to)
+);
+
 create view an_pagelinks_view as
 select pl.*,
 pfrom.name name_from, pfrom.infotype info_from,
 pto.name name_to, pto.infotype info_to from an_pagelinks pl
+inner join an_page pfrom on pfrom.page_id = pl.id_from
+inner join an_page pto on pto.page_id = pl.id_to
+;
+
+create view an_pagelinks_filtered_view as
+select pl.*,
+pfrom.name name_from, pfrom.infotype info_from,
+pto.name name_to, pto.infotype info_to from an_pagelinks_filtered pl
+inner join an_page pfrom on pfrom.page_id = pl.id_from
+inner join an_page pto on pto.page_id = pl.id_to
+;
+
+create view an_pagelinks_featured_view as
+select pl.*,
+pfrom.name name_from, pfrom.infotype info_from,
+pto.name name_to, pto.infotype info_to from an_pagelinks_featured pl
 inner join an_page pfrom on pfrom.page_id = pl.id_from
 inner join an_page pto on pto.page_id = pl.id_to
 ;

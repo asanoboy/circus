@@ -1,4 +1,14 @@
 
+#def name_in_content(name, content):
+#    return content.find(name) != -1 or content.find(' '.join(name.split('_'))) != -1
+
+def pos_in_content(name, content):
+    pos = content.find(name)
+    if pos != -1:
+        return pos
+
+    return content.find(' '.join(name.split('_')))
+
 class Category:
     id = False
     name = False

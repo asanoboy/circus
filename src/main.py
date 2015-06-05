@@ -1,6 +1,6 @@
 import MySQLdb
 import json
-import re, sys
+import re, sys, argparse
 import time
 from circus_itertools import lazy_chunked as chunked
 from models import *
@@ -8,6 +8,8 @@ from dbutils import *
 from consts import valid_infotypes, valid_categories
 #from numerical import *
 from parser import *
+from builders.pagelinks_filtered import PagelinksFilteredBuilder
+from builders.pagelinks_featured import PagelinksFeaturedBuilder
 
 class Lap:
     def __init__(self, tag):
@@ -73,6 +75,7 @@ def buildPageLinks(wiki_db):
     inner join an_page pto on pto.page_id = p.page_id
     """)
     wiki_db.commit()
+
 
 def selectAllInfoNames(wiki_db):
     records = wiki_db.selectAndFetchAll(sqlStr("""
@@ -381,38 +384,55 @@ def sync_master(lang, imported_langs, wiki_db, master_db):
 #    pass # later
 
 if __name__ == '__main__':
-    imported_langs = ['en', 'ja']
-    lang = 'en'
-    wiki_db = WikiDB(lang)
-    with Lap('buildPageLinks'):
-        buildPageLinks(wiki_db)
-        pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-l', '--langs') # ja,en
+    args = parser.parse_args()
+    args = vars(args)
 
-    sys.exit()
+    langs = args['langs'].split(',')
+    #imported_langs = ['en', 'ja']
 
-    with Lap('buildInfo'):
-        #buildInfoEx(wiki_db)
-        pass
+    for lang in langs:
+        wiki_db = WikiDB(lang)
+        with Lap('buildPageLinks'):
+            #buildPageLinks(wiki_db)
+            pass
 
-    with Lap('buildPageEx'):
-        #buildPageEx(wiki_db)
-        pass
+        with Lap('build_page_links_filtered'):
+            builder = PagelinksFilteredBuilder(wiki_db)
+            builder.build()
+            pass
 
-    with Lap('buildCatInfo'):
-        #buildCatInfo(wiki_db)
-        pass
+        with Lap('build_page_links_featured'):
+            builder = PagelinksFeaturedBuilder(wiki_db)
+            builder.build()
+            pass
+        
+        continue
 
-    with Lap('updateFeatured'):
-        #updateFeatured(wiki_db)
-        pass
+        with Lap('buildInfo'):
+            #buildInfoEx(wiki_db)
+            pass
 
-    master_db = MasterWikiDB('wikimaster')
-    with Lap('sync_master'):
-        #sync_master(lang, imported_langs, wiki_db, master_db)
-        pass
+        with Lap('buildPageEx'):
+            #buildPageEx(wiki_db)
+            pass
 
-    #buildNodeByPage(wiki_db)
-    #buildNodeByCategory(wiki_db)
-    #buildFeatureNode(wiki_db)
+        with Lap('buildCatInfo'):
+            #buildCatInfo(wiki_db)
+            pass
+
+        with Lap('updateFeatured'):
+            #updateFeatured(wiki_db)
+            pass
+
+        master_db = MasterWikiDB('wikimaster')
+        with Lap('sync_master'):
+            #sync_master(lang, imported_langs, wiki_db, master_db)
+            pass
+
+        #buildNodeByPage(wiki_db)
+        #buildNodeByCategory(wiki_db)
+        #buildFeatureNode(wiki_db)
 
     pass

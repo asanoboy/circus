@@ -90,8 +90,8 @@ class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
 def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set()):
     conn = openConn()
     cur = conn.cursor(cursorclass=TupleUseResultCursor)
-    cur.execute('set net_read_timeout = 9999')
-    cur.execute('set net_write_timeout = 9999')
+    cur.execute('set net_read_timeout = 99999')
+    cur.execute('set net_write_timeout = 99999')
 
     sql = """
         select %s from %s %s
@@ -240,13 +240,19 @@ class WikiDB(BaseDB):
                 ]):
             yield cols
 
-    def allFeaturedPageGenerator(self, dictFormat=False, featured=True):
+    def allFeaturedPageGenerator(self, dictFormat=False, featured=True, page_ids=None):
+        conds = []
+        if featured:
+            conds.append('i.featured = 1') 
+        if page_ids is not None:
+            conds.append('p.page_id in (%s)' % (','.join([str(pid) for pid in page_ids]), ))
+
         for cols in selectGenerator(self.openConn, 'an_page p', \
                 cols=['p.page_id', 'p.name', 'p.infotype', 'p.infocontent'], \
                 joins=[\
                     'inner join an_info i on i.name = p.infotype', \
                 ], \
-                cond= 'i.featured = 1' if featured else None, \
+                cond= ' and '.join(conds) if len(conds) > 0 else None, \
                 order='p.page_id asc'):
             if dictFormat:
                 yield dict(zip(['page_id', 'name', 'infotype', 'infocontent'], cols))
