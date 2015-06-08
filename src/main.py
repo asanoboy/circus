@@ -10,6 +10,8 @@ from consts import valid_infotypes, valid_categories
 from parser import *
 from builders.pagelinks_filtered import PagelinksFilteredBuilder
 from builders.pagelinks_featured import PagelinksFeaturedBuilder
+from builders.pagelinks import PagelinksBuilder
+from builders.page_sync import PageSyncer
 
 class Lap:
     def __init__(self, tag):
@@ -60,21 +62,6 @@ def selectTextByTitle(wiki_db, title, namespace):
 #            pages += selectPages(title, recursive - 1, joinedExcludePageTitles, joinedExcludeCategoryTitles)
 #
 #    return pages
-
-def buildPageLinks(wiki_db):
-    #holder = TableIndexHolder.open(wiki_db.open_conn, 'an_pagelinks')
-    #for records in chunked(wiki_db.generate_pagelinks_record(), 1000):
-    #    wiki_db.multiInsert('an_pagelinks', ['id_from', 'id_to'], records)
-    #wiki_db.commit()
-    #holder.close()
-    wiki_db.updateQuery("""
-    insert into an_pagelinks
-    select pl.pl_from id_from, p.page_id id_to from pagelinks pl
-    inner join page p on p.page_title = pl.pl_title and p.page_namespace = pl.pl_namespace
-    inner join an_page pfrom on pfrom.page_id = pl.pl_from
-    inner join an_page pto on pto.page_id = p.page_id
-    """)
-    wiki_db.commit()
 
 
 def selectAllInfoNames(wiki_db):
@@ -240,73 +227,6 @@ def build_feature_page(wiki_db):
 #def updateAllCategoryRelations():
 #    return map(updateCategoryRelationsByInfotype, valid_infotypes)
 
-def sync_master(lang, imported_langs, wiki_db, master_db):
-    other_langs = [l for l in imported_langs if l != lang]
-    lang_to_wiki_db = { l: WikiDB(l) for l in other_langs}
-
-    page_iter = wiki_db.allFeaturedPageGenerator(dictFormat=True, featured=False)
-    missing_page_iter = master_db.missing_page_generator(lang, page_iter)
-    #linked_other_lang_page_infos_iter = wiki_db.other_lang_page_infos_generator(missing_page_id_iter)
-
-    master_id_and_lang_id_list = []
-    new_lang_page_list = []
-    for missing_page in missing_page_iter:
-        other_lang_page_infos = wiki_db.selectAndFetchAll("""
-            select ll_from orig_id, ll_title title, ll_lang lang from langlinks
-            where ll_from = %s
-        """, (missing_page['page_id'], ), decode=True)
-    #for other_lang_page_infos in linked_other_lang_page_infos_iter:
-        imported_infos = [ r for r in other_lang_page_infos if r['lang'] in imported_langs]
-        found_master_page_id = None
-        for link_info in imported_infos:
-            linked_lang = link_info['lang']
-            db = lang_to_wiki_db[linked_lang]
-            res = db.selectAndFetchAll("""
-                select p.page_id from page p
-                inner join an_page ap on p.page_id = ap.page_id
-                where p.page_title = %s and p.page_namespace = 0
-            """, (link_info['title'],))
-            if len(res) == 1:
-                lang_page_id = res[0]['page_id']
-                pid_rs = master_db.selectAndFetchAll("""
-                    select page_id master_page_id from page_lang_relation
-                    where lang = %s and lang_page_id = %s
-                """, (linked_lang, lang_page_id))
-                if len(pid_rs) == 1:
-                    found_master_page_id = pid_rs[0]['master_page_id']
-                elif len(pid_rs) > 1:
-                    raise Exception('Invalid')
-
-            elif len(res) > 1:
-                raise Exception('Invalid')
-
-        if found_master_page_id:
-            #master_id_and_lang_id_list.append([found_master_page_id, missing_page.id, missing_page.title])
-            master_id_and_lang_id_list.append({'master_id': found_master_page_id, 'page':missing_page})
-        else:
-            new_lang_page_list.append(missing_page)
-
-
-    res = master_db.selectAndFetchAll("""
-        select max(page_id) max from page
-    """)
-    max_page_id = res[0]['max'] if res[0]['max'] is not None else 0
-    for lang_pages in chunked(new_lang_page_list, 100):
-        start_page_id = max_page_id + 1
-        #data = [ [i+start_page_id, page.id, page.title] for i, page in enumerate(lang_pages)]
-        data = [ {'master_id': i+start_page_id, 'page': page} for i, page in enumerate(lang_pages)]
-        master_db.multiInsert('page', \
-                ['page_id'], \
-                [[d['master_id'],] for d in data])
-        master_id_and_lang_id_list += data
-        max_page_id += len(data)
-
-    for values in chunked(master_id_and_lang_id_list, 100):
-        master_db.multiInsert('page_lang_relation', \
-                ['page_id', 'lang_page_id', 'name', 'lang'], \
-                [[r['master_id'], r['page']['page_id'], r['page']['name'], lang] for r in values] )
-
-    master_db.commit()
 
 #def maxNodeId():
 #    cur.execute(sqlStr('select max(node_id) max from integrated.node'))
@@ -394,13 +314,22 @@ if __name__ == '__main__':
 
     for lang in langs:
         wiki_db = WikiDB(lang)
-        with Lap('buildPageLinks'):
-            #buildPageLinks(wiki_db)
+        with Lap('buildInfo'):
+            #buildInfoEx(wiki_db)
             pass
 
-        with Lap('build_page_links_filtered'):
-            builder = PagelinksFilteredBuilder(wiki_db)
+        with Lap('buildPageEx'):
+            #buildPageEx(wiki_db)
+            pass
+
+        with Lap('Pagelinks'):
+            builder = PagelinksBuilder(wiki_db)
             builder.build()
+            pass
+
+        with Lap('PagelinksFilteredBuilder'):
+            builder = PagelinksFilteredBuilder(wiki_db)
+            #builder.build()
             pass
 
         with Lap('build_page_links_featured'):
@@ -409,14 +338,6 @@ if __name__ == '__main__':
             pass
         
         continue
-
-        with Lap('buildInfo'):
-            #buildInfoEx(wiki_db)
-            pass
-
-        with Lap('buildPageEx'):
-            #buildPageEx(wiki_db)
-            pass
 
         with Lap('buildCatInfo'):
             #buildCatInfo(wiki_db)
@@ -427,7 +348,9 @@ if __name__ == '__main__':
             pass
 
         master_db = MasterWikiDB('wikimaster')
-        with Lap('sync_master'):
+        with Lap('page_sync'):
+            syncer = PageSyncer(master_db, wiki_db, imported_langs)
+            syncer.sync()
             #sync_master(lang, imported_langs, wiki_db, master_db)
             pass
 
