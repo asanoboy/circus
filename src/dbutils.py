@@ -17,18 +17,17 @@ class TableIndex:
         self.cols.append(col)
 
 class TableIndexHolder:
-    def __init__(self, openConn, table, indexList):
+    def __init__(self, openConn, table):
         self.openConn = openConn 
-        self.indexList = indexList
+        self.indexList = []
         self.table = table
 
-    @classmethod
-    def open(cls, openConn, table):
-        conn = openConn()
+    def open(self):
+        conn = self.openConn()
         cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
         cur.execute("""
             show index from %s
-        """ % (table, ))
+        """ % (self.table, ))
         records = cur.fetchall()
         nameToIndex = {}
         for r in sorted(records, key=lambda x: x['Seq_in_index']):
@@ -42,17 +41,24 @@ class TableIndexHolder:
                 continue
                 cur.execute("""
                     alter table %s drop primary key
-                """ % (table))
+                """ % (self.table,))
             else:
                 cur.execute("""
                     alter table %s drop index %s
-                """ % (table, index.name))
+                """ % (self.table, index.name))
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return cls(openConn, table, list(nameToIndex.values()))
+        self.indexList = list(nameToIndex.values())
+        #return cls(openConn, table, list(nameToIndex.values()))
+
+    def __enter__(self):
+        self.open()
+        
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.close()
 
     def close(self):
         conn = self.openConn()
@@ -320,8 +326,6 @@ class WikiDB(BaseDB):
             info = None
             if with_info:
                 info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
-                if not info:
-                    return False
             return Page(res[0]['id'], title, text, info)
         else:
             return False 

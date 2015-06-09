@@ -12,6 +12,7 @@ from builders.pagelinks_filtered import PagelinksFilteredBuilder
 from builders.pagelinks_featured import PagelinksFeaturedBuilder
 from builders.pagelinks import PagelinksBuilder
 from builders.page_sync import PageSyncer
+from builders.page_builder import PageBuilder
 
 class Lap:
     def __init__(self, tag):
@@ -64,12 +65,6 @@ def selectTextByTitle(wiki_db, title, namespace):
 #    return pages
 
 
-def selectAllInfoNames(wiki_db):
-    records = wiki_db.selectAndFetchAll(sqlStr("""
-        select name from an_info
-    """))
-    return [record['name'] for record in records]
-
 def createCategoryWithoutStub(data):
     id = data[0]
     title = data[1]
@@ -83,20 +78,6 @@ def createCategoryWithoutStub(data):
         return False
     else:
         return Category(id, title)
-
-def buildPageEx(wiki_db):
-    allowedInfoNames = selectAllInfoNames(wiki_db)
-    def createPageInternal(title):
-        return wiki_db.createPageByTitle(title, allowedInfoNames)
-
-    pages = map(createPageInternal, wiki_db.allPageTitlesGenerator())
-    pages = filter(lambda p: p and p.info, pages)
-
-    for pageList in chunked(pages, 100):
-        wiki_db.multiInsert('an_page', ['page_id', 'name', 'contentlength',  'infotype', 'infocontent'], \
-            [[p.id, p.title, p.contentlength, p.info.name, json.dumps(p.info.keyValue)] for p in pageList])
-
-    wiki_db.commit()
 
 def buildInfoEx(wiki_db):
     for datas in chunked(wiki_db.allInfoDataGenerator(), 100):
@@ -314,30 +295,43 @@ if __name__ == '__main__':
 
     for lang in langs:
         wiki_db = WikiDB(lang)
+        builders = [\
+            PageBuilder(wiki_db), \
+            #PagelinksBuilder(wiki_db), \
+            #PagelinksFilteredBuilder(wiki_db), \
+            #PagelinksFeaturedBuilder(wiki_db), \
+
+        ]
+        
+        for builder in builders:
+            with Lap('%s, %s' % (lang, builder.__class__.__name__)):
+                builder.build()
+
+        continue
+
         with Lap('buildInfo'):
             #buildInfoEx(wiki_db)
             pass
 
-        with Lap('buildPageEx'):
-            #buildPageEx(wiki_db)
-            pass
+        #with Lap('PageBuilder'):
+        #    builder = PageBuilder(wiki_db)
+        #    builder.build()
+        #    pass
 
-        with Lap('Pagelinks'):
-            builder = PagelinksBuilder(wiki_db)
-            builder.build()
-            pass
+        #with Lap('PagelinksBuilder'):
+        #    #builder = PagelinksBuilder(wiki_db)
+        #    builder.build()
+        #    pass
 
-        with Lap('PagelinksFilteredBuilder'):
-            builder = PagelinksFilteredBuilder(wiki_db)
-            #builder.build()
-            pass
+        #with Lap('PagelinksFilteredBuilder'):
+        #    builder = PagelinksFilteredBuilder(wiki_db)
+        #    #builder.build()
+        #    pass
 
-        with Lap('build_page_links_featured'):
-            builder = PagelinksFeaturedBuilder(wiki_db)
-            builder.build()
-            pass
-        
-        continue
+        #with Lap('build_page_links_featured'):
+        #    builder = PagelinksFeaturedBuilder(wiki_db)
+        #    #builder.build()
+        #    pass
 
         with Lap('buildCatInfo'):
             #buildCatInfo(wiki_db)

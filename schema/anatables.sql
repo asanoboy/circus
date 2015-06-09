@@ -1,15 +1,17 @@
 create table an_page (
     page_id INT NOT NULL,
+    page_type  tinyint not null,
     name varchar(255) NOT NULL,
-    infotype VARCHAR(255) binary NOT NULL,
+    infotype VARCHAR(255) NULL,
     infocontent TEXT NOT NULL,
-    contentlength INT NOT NULL,
-    primary key (page_id)
+/*    contentlength INT NOT NULL, */
+    primary key (page_id),
+    index infotype(infotype)
 );
 
 create table an_info(
     text_id INT NOT NULL PRIMARY KEY,
-    name varchar(255) binary NOT NULL,
+    name varchar(255) NOT NULL,
     featured tinyint NOT NULL default 0,
     redirect_to INT NULL default NULL,
     index name(name)
@@ -60,7 +62,7 @@ create table an_feature_page (
 create table an_pagelinks (
     id_from int NOT NULL,
     id_to int NOT NULL,
-    primary key(id_from, id_to),
+    index id_from(id_from),
     index id_to(id_to)
 );
 
