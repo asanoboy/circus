@@ -1,5 +1,6 @@
 from dbutils import selectGenerator
 from circus_itertools import lazy_chunked as chunked
+from .syncer import Syncer
 import json
 
 class PageBuilder:
@@ -12,19 +13,32 @@ class PageBuilder:
         def createPageInternal(title):
             return self.db.createPageByTitle(title, allowedInfoNames)
 
-        pages = map(createPageInternal, self.db.allPageTitlesGenerator())
+        source_all_page_iter = self.db.generate_records('page', cols=['page_id', 'page_title', 'page_namespace'], \
+            order='page_id asc', \
+            dict_format=True)
+        source_page_iter = filter(lambda x: int(x['page_namespace'])==0, source_all_page_iter)
+        dest_page_iter = self.db.generate_records('an_page', cols=['page_id'], \
+            order='page_id asc', \
+            dict_format=True)
+
+        syncer = Syncer(source_page_iter, dest_page_iter, ['page_id'])
+        #pages = map(createPageInternal, self.db.allPageTitlesGenerator())
+        pages = map(createPageInternal, ( r['page_title'] for r in syncer.generate_for_insert() ))
         #pages = filter(lambda p: p and p.info, pages)
 
         for pageList in chunked(pages, 100):
-            self.db.multiInsert('an_page', ['page_id', 'page_type', 'name', 'infotype', 'infocontent'], \
+            rt = self.db.multiInsert('an_page', ['page_id', 'page_type', 'name', 'infotype', 'infocontent'], \
                 [[ \
                     p.id, \
                     0, \
                     p.title, \
                     p.info.name if p.info else None, \
                     json.dumps(p.info.keyValue) if p.info else '' \
-                ] for p in pageList])
+                ] for p in pageList], \
+                safe=True)
 
+            if not rt:
+                print([p.id for p in pageList])
         
     def _build_cat(self):
         cat_iter = selectGenerator(self.db.openConn, 'page', \

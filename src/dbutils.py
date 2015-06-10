@@ -93,9 +93,10 @@ class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
     MySQLdb.cursors.BaseCursor):
     pass
 
-def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set()):
+def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set(), dict_format=False):
     conn = openConn()
-    cur = conn.cursor(cursorclass=TupleUseResultCursor)
+    cur_class = DictUseResultCursor if dict_format else TupleUseResultCursor
+    cur = conn.cursor(cursorclass=cur_class)
     cur.execute('set net_read_timeout = 99999')
     cur.execute('set net_write_timeout = 99999')
 
@@ -118,10 +119,13 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
             print(cnt, ':%s sec' % (now_time - last_time,))
             last_time = now_time
             pass
-
+        
         rt = cur.fetchone()
         if rt:
-            yield list(map(lambda x: x.decode('utf-8') if hasattr(x, 'decode') else x, rt))
+            if dict_format:
+                yield { key: decode_if_binary(val) for key, val in rt.items() }
+            else:
+                yield list(map(lambda x: decode_if_binary(x), rt))
         else:
             break
 
@@ -153,7 +157,7 @@ class BaseDB:
     def open_conn(self):
         return self.openConn()
 
-    def multiInsert(self, table, cols, valuesList, on_duplicate=None):
+    def _multiInsert(self, table, cols, valuesList, on_duplicate):
         cur = self.write_conn.cursor()
         cur.execute(sqlStr(("""
             insert into %s (%s)
@@ -164,14 +168,27 @@ class BaseDB:
             tuple(chain.from_iterable(valuesList)) \
         )
         cur.close()
+        
+
+    def multiInsert(self, table, cols, valuesList, on_duplicate=None, safe=False):
+        if safe:
+            try:
+                self._multiInsert(table, cols, valuesList, on_duplicate)
+            except Exception as e:
+                print(e)
+                return False
+        else:
+            self._multiInsert(table, cols, valuesList, on_duplicate)
+
+        return True
 
     def updateQuery(self, query, args=set()):
         cur = self.write_conn.cursor()
         cur.execute(query, args)
         cur.close()
 
-    def generate_records(self, table, cols=[], joins=[], cond='', order='', arg=set()):
-        return selectGenerator(self.openConn, table, cols, joins, cond, order, arg)
+    def generate_records(self, table, cols=[], joins=[], cond='', order='', arg=set(), dict_format=False):
+        return selectGenerator(self.openConn, table, cols, joins, cond, order, arg, dict_format)
 
     def selectAndFetchAll(self, query, args=set(), dictFormat=True, decode=False):
         cur = None

@@ -298,11 +298,11 @@ if __name__ == '__main__':
     for lang in langs:
         wiki_db = WikiDB(lang)
         builders = [\
-            #PageBuilder(wiki_db), \
+            PageBuilder(wiki_db), \
             #PagelinksBuilder(wiki_db), \
             #PagelinksFilteredBuilder(wiki_db), \
             #PagelinksFeaturedBuilder(wiki_db), \
-            ItemTagBuilder(master_db, wiki_db), \
+            #ItemTagBuilder(master_db, wiki_db), \
         ]
         
         for builder in builders:
