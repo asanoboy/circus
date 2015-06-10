@@ -1,3 +1,4 @@
+from dbutils import selectGenerator
 from circus_itertools import lazy_chunked as chunked
 import json
 
@@ -6,17 +7,16 @@ class PageBuilder:
         self.db = wiki_db
         pass
 
-    def build(self):
-        wiki_db = self.db
-        allowedInfoNames = [ r['name'] for r in wiki_db.selectAndFetchAll("select name from an_info") ]
+    def _build_page(self):
+        allowedInfoNames = [ r['name'] for r in self.db.selectAndFetchAll("select name from an_info") ]
         def createPageInternal(title):
-            return wiki_db.createPageByTitle(title, allowedInfoNames)
+            return self.db.createPageByTitle(title, allowedInfoNames)
 
-        pages = map(createPageInternal, wiki_db.allPageTitlesGenerator())
+        pages = map(createPageInternal, self.db.allPageTitlesGenerator())
         #pages = filter(lambda p: p and p.info, pages)
 
         for pageList in chunked(pages, 100):
-            wiki_db.multiInsert('an_page', ['page_id', 'page_type', 'name', 'infotype', 'infocontent'], \
+            self.db.multiInsert('an_page', ['page_id', 'page_type', 'name', 'infotype', 'infocontent'], \
                 [[ \
                     p.id, \
                     0, \
@@ -25,12 +25,19 @@ class PageBuilder:
                     json.dumps(p.info.keyValue) if p.info else '' \
                 ] for p in pageList])
 
-        cat_iter = wiki_db.selectGenerator(wiki_db.self.openConn, 'page', \
+        
+    def _build_cat(self):
+        cat_iter = selectGenerator(self.db.openConn, 'page', \
             cols=['page_id', 'page_title'], \
             cond='page_namespace=14')
 
         for cat_list in chunked(cat_iter, 1000):
-            wiki_db.multiInsert('an_page', ['page_id', 'name', 'page_type', 'infotype', 'infocontent'], \
+            self.db.multiInsert('an_page', ['page_id', 'name', 'page_type', 'infotype', 'infocontent'], \
                 [ [r[0], r[1], 1, None, ''] for r in cat_list] )
+        
 
-        wiki_db.commit()
+    def build(self):
+        self._build_cat()
+        self._build_page()
+
+        self.db.commit()
