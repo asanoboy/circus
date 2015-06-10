@@ -13,6 +13,7 @@ from builders.pagelinks_featured import PagelinksFeaturedBuilder
 from builders.pagelinks import PagelinksBuilder
 from builders.page_sync import PageSyncer
 from builders.page_builder import PageBuilder
+from builders.itemtag_builder import ItemTagBuilder
 
 class Lap:
     def __init__(self, tag):
@@ -293,14 +294,15 @@ if __name__ == '__main__':
     langs = args['langs'].split(',')
     #imported_langs = ['en', 'ja']
 
+    master_db = MasterWikiDB('wikimaster')
     for lang in langs:
         wiki_db = WikiDB(lang)
         builders = [\
-            PageBuilder(wiki_db), \
+            #PageBuilder(wiki_db), \
             #PagelinksBuilder(wiki_db), \
             #PagelinksFilteredBuilder(wiki_db), \
             #PagelinksFeaturedBuilder(wiki_db), \
-
+            ItemTagBuilder(master_db, wiki_db), \
         ]
         
         for builder in builders:
@@ -341,7 +343,6 @@ if __name__ == '__main__':
             #updateFeatured(wiki_db)
             pass
 
-        master_db = MasterWikiDB('wikimaster')
         with Lap('page_sync'):
             syncer = PageSyncer(master_db, wiki_db, imported_langs)
             syncer.sync()

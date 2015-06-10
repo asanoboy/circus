@@ -1,7 +1,7 @@
 
 create table item (
     item_id int not null,
-    is_item tinyint not null,
+    visible tinyint not null,
     primary key(item_id)
 );
 
@@ -10,8 +10,9 @@ create table item_page (
     lang varchar(20) not null,
     page_id int not null,
     name varchar(255) not null, 
-    view_num int not null,
-    primary key(item_id, lang)
+    view_count int not null,
+    primary key(item_id),
+    index lang(lang)
 );
 
 create table feature_item_lang (

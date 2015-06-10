@@ -107,7 +107,7 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
     if order:
         sql += " order by %s " % (order,)
 
-    print(sql)
+    print(sql, arg)
     cur.execute(sqlStr(sql), arg)
     cnt = 0
     last_time = time.time()
@@ -169,6 +169,9 @@ class BaseDB:
         cur = self.write_conn.cursor()
         cur.execute(query, args)
         cur.close()
+
+    def generate_records(self, table, cols=[], joins=[], cond='', order='', arg=set()):
+        return selectGenerator(self.openConn, table, cols, joins, cond, order, arg)
 
     def selectAndFetchAll(self, query, args=set(), dictFormat=True, decode=False):
         cur = None
