@@ -158,6 +158,8 @@ class BaseDB:
         return self.openConn()
 
     def _multiInsert(self, table, cols, valuesList, on_duplicate):
+        if len(valuesList) == 0:
+            return
         cur = self.write_conn.cursor()
         cur.execute(sqlStr(("""
             insert into %s (%s)
@@ -334,6 +336,7 @@ class WikiDB(BaseDB):
         return info
 
     def createPageByTitle(self, title, allowedInfoNames=False, namespace=0, with_info=True):
+        title = '_'.join(title.split(' '))
         res = self.selectAndFetchAll(sqlStr("""
             select t.old_text wiki, p.page_id id from page p 
             left join revision r on r.rev_page = p.page_id

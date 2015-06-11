@@ -13,10 +13,10 @@ class PageBuilder:
         def createPageInternal(title):
             return self.db.createPageByTitle(title, allowedInfoNames)
 
-        source_all_page_iter = self.db.generate_records('page', cols=['page_id', 'page_title', 'page_namespace'], \
+        source_all_page_iter = self.db.generate_records('page', cols=['page_id', 'page_title', 'page_namespace', 'page_is_redirect'], \
             order='page_id asc', \
             dict_format=True)
-        source_page_iter = filter(lambda x: int(x['page_namespace'])==0, source_all_page_iter)
+        source_page_iter = filter(lambda x: int(x['page_namespace'])==0 and int(x['page_is_redirect'])==0, source_all_page_iter)
         dest_page_iter = self.db.generate_records('an_page', cols=['page_id'], \
             order='page_id asc', \
             dict_format=True)

@@ -1,11 +1,15 @@
 
 class SyncRecord:
-    def __init__(self, record, compares):
+    def __init__(self, record, compares, validate=False):
         self.raw = record
         self.comps = compares
+        self.validate = validate
 
     def __gt__(self, other):
         for comp in self.comps:
+            if self.validate and type(self.raw[comp]) != type(other.raw[comp]):
+                raise Exception('Types of "%s" are not matched' % (comp,))
+
             if self.raw[comp] > other.raw[comp]:
                 return True
             elif self.raw[comp] < other.raw[comp]:
@@ -24,20 +28,21 @@ class Syncer:
     """
     Assumes that source_iter and dest_iter are sorted by compares asc.
     """
-    def __init__(self, source_iter, dest_iter, compares):
+    def __init__(self, source_iter, dest_iter, compares, validate=False):
         self.source = source_iter
         self.dest = dest_iter
         self.comps = compares
+        self.validate = validate
 
     def _next_source(self):
         try:
-            return SyncRecord(self.source.__next__(), self.comps)
+            return SyncRecord(self.source.__next__(), self.comps, self.validate)
         except StopIteration:
             return None
 
     def _next_dest(self):
         try:
-            return SyncRecord(self.dest.__next__(), self.comps)
+            return SyncRecord(self.dest.__next__(), self.comps, self.validate)
         except StopIteration:
             return None
 

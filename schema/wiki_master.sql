@@ -11,7 +11,7 @@ create table item_page (
     page_id int not null,
     name varchar(255) not null, 
     view_count int not null,
-    primary key(item_id),
+    primary key(item_id, lang),
     index lang(lang)
 );
 
@@ -34,7 +34,8 @@ create table tag (
 create table tag_item (
     item_id int not null,
     tag_id int not null,
-    primary key(item_id, tag_id)
+    primary key(item_id),
+    index tag_id(tag_id)
 );
 
 /* hard coding */

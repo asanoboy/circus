@@ -292,17 +292,18 @@ if __name__ == '__main__':
     args = vars(args)
 
     langs = args['langs'].split(',')
-    #imported_langs = ['en', 'ja']
+    imported_langs = ['en', 'ja']
 
     master_db = MasterWikiDB('wikimaster')
     for lang in langs:
         wiki_db = WikiDB(lang)
+        other_dbs = [ WikiDB(l) for l in imported_langs if l != lang ]
         builders = [\
-            PageBuilder(wiki_db), \
+            #PageBuilder(wiki_db), \
             #PagelinksBuilder(wiki_db), \
             #PagelinksFilteredBuilder(wiki_db), \
             #PagelinksFeaturedBuilder(wiki_db), \
-            #ItemTagBuilder(master_db, wiki_db), \
+            ItemTagBuilder(master_db, wiki_db, other_dbs), \
         ]
         
         for builder in builders:
