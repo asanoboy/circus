@@ -1,6 +1,6 @@
 from dbutils import selectGenerator
 from circus_itertools import lazy_chunked as chunked
-from .syncer import Syncer
+from .builder_utils import Syncer
 import json
 
 class PageBuilder:
