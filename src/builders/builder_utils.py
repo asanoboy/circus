@@ -1,4 +1,10 @@
+import sys
 from circus_itertools import lazy_chunked as chunked
+
+def is_equal_as_pagename(a, b):
+    return '_'.join(a.split(' ')) == \
+           '_'.join(b.split(' '))
+
 
 class SyncRecord:
     def __init__(self, record, compares, validate=False):
@@ -98,7 +104,7 @@ class ItemPageRelationManager:
 
         return self._last_item_id
 
-    def _find_or_create_item_id(self, page_id):
+    def _find_or_create_item_id(self, page_id, page_name):
         rs = self.lang_db.selectAndFetchAll('select ll_lang lang, ll_title name from langlinks where ll_from=%s', \
             args=(page_id,), decode=True)
 
@@ -112,10 +118,19 @@ class ItemPageRelationManager:
                 print("Invalid langlinks", page_id, lang, name)
                 continue
 
-            item_rs = self.master_db.selectAndFetchAll('select item_id from item_page where lang = %s and page_id = %s', \
-                args=(lang, foreign_page.id))
-            if len(item_rs) == 1:
-                return item_rs[0]['item_id']
+            foreign_rs = db.selectAndFetchAll('select ll_lang lang, ll_title name from langlinks where ll_from=%s and ll_lang = %s', \
+                args=(foreign_page.id, self.lang), decode=True)
+
+            '''
+            Confirms that found title is linked by found lang.
+            '''
+            if len(foreign_rs) == 1 and is_equal_as_pagename(foreign_rs[0]['name'], page_name):
+                item_rs = self.master_db.selectAndFetchAll('select item_id from item_page where lang = %s and page_id = %s', \
+                    args=(lang, foreign_page.id))
+                if len(item_rs) == 1:
+                    return item_rs[0]['item_id']
+            else:
+                print('Does not match langlinks names( %s: %s, %s: %s)' % (lang, foreign_rs, self.lang, page_name))
 
         self._last_item_id += 1
         self.created_item_ids.append(self._last_item_id)
@@ -123,8 +138,8 @@ class ItemPageRelationManager:
 
     def merge_page_to_item(self, page_iter):
         last_item_id = self._get_last_item_id()
-        for pages in chunked(page_iter, 1000):
-            page_id_to_item_id = { p['page_id']: self._find_or_create_item_id(p['page_id']) for p in pages }
+        for pages in chunked(page_iter, 100):
+            page_id_to_item_id = { p['page_id']: self._find_or_create_item_id(p['page_id'], p['name']) for p in pages }
 
             self.master_db.multiInsert('item', ['item_id', 'visible'], \
                 [ [ \
