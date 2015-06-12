@@ -12,7 +12,7 @@ create table item_page (
     name varchar(255) not null, 
     view_count int not null,
     primary key(item_id, lang),
-    index lang(lang)
+    index lang(lang, page_id)
 );
 
 create table feature_item_lang (

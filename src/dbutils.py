@@ -114,7 +114,7 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
     last_time = time.time()
     while 1:
         cnt += 1
-        if cnt % 1000 == 0:
+        if cnt % 10000 == 0:
             now_time = time.time()
             print(cnt, ':%s sec' % (now_time - last_time,))
             last_time = now_time
@@ -150,6 +150,7 @@ class BaseDB:
         self.dbname = dbname
         self.write_conn = self.openConn()
         self.read_conn = self.openConn()
+        self.insert_records_num = {}
 
     def openConn(self):
         return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
@@ -170,7 +171,10 @@ class BaseDB:
             tuple(chain.from_iterable(valuesList)) \
         )
         cur.close()
-        
+
+        if table not in self.insert_records_num:
+            self.insert_records_num[table] = 0
+        self.insert_records_num[table] += len(valuesList)
 
     def multiInsert(self, table, cols, valuesList, on_duplicate=None, safe=False):
         if safe:
@@ -212,6 +216,10 @@ class BaseDB:
 
     def commit(self):
         print('commit')
+        print('Inserted to following tables.')
+        print(self.insert_records_num)
+
+        self.insert_records_num = {}
         self.write_conn.commit()
         self.read_conn.close()
         self.read_conn = self.openConn()

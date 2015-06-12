@@ -14,6 +14,7 @@ from builders.pagelinks import PagelinksBuilder
 from builders.page_sync import PageSyncer
 from builders.page_builder import PageBuilder
 from builders.itemtag_builder import ItemTagBuilder
+from builders.feature_builder import FeatureBuilder
 
 class Lap:
     def __init__(self, tag):
@@ -303,7 +304,8 @@ if __name__ == '__main__':
             #PagelinksBuilder(wiki_db), \
             #PagelinksFilteredBuilder(wiki_db), \
             #PagelinksFeaturedBuilder(wiki_db), \
-            ItemTagBuilder(master_db, wiki_db, other_dbs), \
+            #ItemTagBuilder(master_db, wiki_db, other_dbs), \
+            FeatureBuilder(master_db, wiki_db, other_dbs), \
         ]
         
         for builder in builders:

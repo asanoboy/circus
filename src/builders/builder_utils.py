@@ -26,10 +26,16 @@ class SyncRecord:
         return False
     
     def __lt__(self, other):
-        return not self.__eq__(other) and not self.__gt__(other)
+        if self.__eq__(other):
+            return False
+        return not self.__gt__(other)
 
     def __eq__(self, other):
-        return self.raw == other.raw
+        for comp in self.comps:
+            if self.raw[comp] != other.raw[comp]:
+                return False
+
+        return True
 
 class Syncer:
     """
@@ -138,14 +144,19 @@ class ItemPageRelationManager:
 
     def merge_page_to_item(self, page_iter):
         last_item_id = self._get_last_item_id()
+
         for pages in chunked(page_iter, 100):
             page_id_to_item_id = { p['page_id']: self._find_or_create_item_id(p['page_id'], p['name']) for p in pages }
+            for page_id, item_id in page_id_to_item_id.items():
+                #print(page_id, item_id)
+                pass
 
+            new_pages = [ p for p in pages if page_id_to_item_id[p['page_id']] > last_item_id ]
             self.master_db.multiInsert('item', ['item_id', 'visible'], \
                 [ [ \
                     page_id_to_item_id[p['page_id']], \
                     1, \
-                ] for p in pages if page_id_to_item_id[p['page_id']] > last_item_id ])
+                ] for p in new_pages ])
 
             self.master_db.multiInsert('item_page', ['page_id', 'name', 'lang', 'item_id', 'view_count'], \
                 [ [ \
@@ -155,4 +166,5 @@ class ItemPageRelationManager:
                     page_id_to_item_id[p['page_id']], \
                     0, \
                 ] for p in pages])
+
 
