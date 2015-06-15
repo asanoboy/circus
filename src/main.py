@@ -304,7 +304,7 @@ if __name__ == '__main__':
             #PagelinksBuilder(wiki_db), \
             #PagelinksFilteredBuilder(wiki_db), \
             #PagelinksFeaturedBuilder(wiki_db), \
-            #ItemTagBuilder(master_db, wiki_db, other_dbs), \
+            ItemTagBuilder(master_db, wiki_db, other_dbs), \
             FeatureBuilder(master_db, wiki_db, other_dbs), \
         ]
         

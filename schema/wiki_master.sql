@@ -21,7 +21,7 @@ create table feature_item_lang (
     strength float not null,
     lang varchar(20) not null,
     index feature_id(feature_id),
-    index item_id(item_id)
+    index lang(lang, item_id)
 );
 
 /* hard coding */
@@ -45,10 +45,11 @@ create table feature_type (
 );
 
 create table feature (
-    feature_id int not null,
+    feature_id int not null auto_increment,
     feature_type_id int not null,
     item_id int not null,
-    primary key(feature_id)
+    primary key(feature_id),
+    index feature_type_id(feature_type_id, item_id)
 );
 
 create table feature_item (
@@ -67,6 +68,12 @@ create table feature_feature (
     index(id_to)
 );
 
+create view v_feature_item_lang_view as
+select fil.*, ip2.name feature_name, ip.name item_name from feature_item_lang fil
+inner join item_page ip on ip.item_id = fil.item_id and ip.lang = fil.lang
+inner join feature f on f.feature_id = fil.feature_id
+inner join item_page ip2 on f.item_id = ip2.item_id
+;
 
 /*
 create table category (
