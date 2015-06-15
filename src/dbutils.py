@@ -17,10 +17,11 @@ class TableIndex:
         self.cols.append(col)
 
 class TableIndexHolder:
-    def __init__(self, openConn, table):
+    def __init__(self, openConn, table, no_index=False):
         self.openConn = openConn 
         self.indexList = []
         self.table = table
+        self.no_index = no_index
 
     def open(self):
         conn = self.openConn()
@@ -36,7 +37,6 @@ class TableIndexHolder:
                 nameToIndex[name] = TableIndex(name, r['Non_unique'] == 0)
             nameToIndex[name].addCol(r['Column_name'])
         for index in nameToIndex.values():
-            key = None
             if index.isPrimary:
                 continue
                 cur.execute("""
@@ -52,15 +52,17 @@ class TableIndexHolder:
         conn.close()
 
         self.indexList = list(nameToIndex.values())
-        #return cls(openConn, table, list(nameToIndex.values()))
+        # return cls(openConn, table, list(nameToIndex.values()))
 
     def __enter__(self):
         self.open()
-        
+
     def __exit__(self, exception_type, exception_value, traceback):
         self.close()
 
     def close(self):
+        if self.no_index:
+            return
         conn = self.openConn()
         cur = conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
         for index in self.indexList:
@@ -69,7 +71,7 @@ class TableIndexHolder:
                 continue
                 key = 'primary key'
             elif index.isUnique:
-                key = 'index' # Because unique key is not necessary.
+                key = 'index'  # Because unique key is not necessary.
             else:
                 key = 'index'
 
@@ -80,20 +82,28 @@ class TableIndexHolder:
         cur.close()
         conn.close()
 
+
 def sqlStr(text):
     return text
 
-class DictUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
-    MySQLdb.cursors.CursorDictRowsMixIn, \
-    MySQLdb.cursors.BaseCursor):
+
+class DictUseResultCursor(
+        MySQLdb.cursors.CursorUseResultMixIn,
+        MySQLdb.cursors.CursorDictRowsMixIn,
+        MySQLdb.cursors.BaseCursor):
     pass
 
-class TupleUseResultCursor(MySQLdb.cursors.CursorUseResultMixIn, \
-    MySQLdb.cursors.CursorTupleRowsMixIn, \
-    MySQLdb.cursors.BaseCursor):
+
+class TupleUseResultCursor(
+        MySQLdb.cursors.CursorUseResultMixIn,
+        MySQLdb.cursors.CursorTupleRowsMixIn,
+        MySQLdb.cursors.BaseCursor):
     pass
 
-def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=set(), dict_format=False):
+
+def selectGenerator(
+        openConn, table, cols=[], joins=[], cond='',
+        order='', arg=set(), dict_format=False):
     conn = openConn()
     cur_class = DictUseResultCursor if dict_format else TupleUseResultCursor
     cur = conn.cursor(cursorclass=cur_class)
@@ -119,11 +129,11 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
             print(cnt, ':%s sec' % (now_time - last_time,))
             last_time = now_time
             pass
-        
+
         rt = cur.fetchone()
         if rt:
             if dict_format:
-                yield { key: decode_if_binary(val) for key, val in rt.items() }
+                yield {key: decode_if_binary(val) for key, val in rt.items()}
             else:
                 yield list(map(lambda x: decode_if_binary(x), rt))
         else:
@@ -132,18 +142,10 @@ def selectGenerator(openConn, table, cols=[], joins=[], cond='', order='', arg=s
     cur.close()
     conn.close()
 
-#def queryMultiInsert(cur, table, cols, valuesList):
-#    cur.execute(sqlStr(("""
-#        insert into %s (%s)
-#        values
-#        """ % (table, ','.join(cols))) \
-#        + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))), \
-#        tuple(chain.from_iterable(valuesList)) \
-#    )
-#    pass
 
 def decode_if_binary(x):
     return x.decode('utf-8') if hasattr(x, 'decode') else x
+
 
 class BaseDB:
     def __init__(self, dbname):
@@ -153,7 +155,9 @@ class BaseDB:
         self.insert_records_num = {}
 
     def openConn(self):
-        return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=self.dbname, charset='utf8')
+        return MySQLdb.connect(
+            host="127.0.0.1", user="root", passwd="",
+            db=self.dbname, charset='utf8')
 
     def open_conn(self):
         return self.openConn()
@@ -162,13 +166,16 @@ class BaseDB:
         if len(valuesList) == 0:
             return
         cur = self.write_conn.cursor()
-        cur.execute(sqlStr(("""
+        cur.execute(("""
             insert into %s (%s)
             values
-            """ % (table, ','.join(cols))) \
-            + ','.join(['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList))) \
-            + ( (' on duplicate key update ' + on_duplicate) if on_duplicate is not None else ''), \
-            tuple(chain.from_iterable(valuesList)) \
+            """ % (table, ','.join(cols)))
+            + ','.join(
+                ['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList)
+                )
+            + ((' on duplicate key update ' + on_duplicate)
+                if on_duplicate is not None else ''),
+            tuple(chain.from_iterable(valuesList))
         )
         cur.close()
 
@@ -176,7 +183,8 @@ class BaseDB:
             self.insert_records_num[table] = 0
         self.insert_records_num[table] += len(valuesList)
 
-    def multiInsert(self, table, cols, valuesList, on_duplicate=None, safe=False):
+    def multiInsert(
+            self, table, cols, valuesList, on_duplicate=None, safe=False):
         if safe:
             try:
                 self._multiInsert(table, cols, valuesList, on_duplicate)
@@ -193,10 +201,15 @@ class BaseDB:
         cur.execute(query, args)
         cur.close()
 
-    def generate_records(self, table, cols=[], joins=[], cond='', order='', arg=set(), dict_format=False):
-        return selectGenerator(self.openConn, table, cols, joins, cond, order, arg, dict_format)
+    def generate_records(
+            self, table, cols=[], joins=[], cond='',
+            order='', arg=set(), dict_format=False):
+        return selectGenerator(
+            self.openConn, table, cols, joins, cond,
+            order, arg, dict_format)
 
-    def selectAndFetchAll(self, query, args=set(), dictFormat=True, decode=False):
+    def selectAndFetchAll(
+            self, query, args=set(), dictFormat=True, decode=False):
         cur = None
         if dictFormat:
             cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -207,7 +220,10 @@ class BaseDB:
         rt = cur.fetchall()
         if decode:
             if dictFormat:
-                rt = [ { key: decode_if_binary(value) for key, value in record.items() } for record in rt]
+                rt = [
+                    {key: decode_if_binary(value)
+                        for key, value in record.items()}
+                    for record in rt]
             else:
                 raise Exception('Not support')
 
@@ -231,13 +247,17 @@ class WikiDB(BaseDB):
         super().__init__('%swiki' % (lang, ))
 
     def allCategoryDataGenerator(self, dict_format=False):
-        for cols in selectGenerator(self.openConn, 'category c', \
-                cols=['cat_id', 'cat_title', 't.old_text'], \
-                joins=[ \
-                    'inner join page p on p.page_title = c.cat_title and p.page_namespace = 14', \
-                    'inner join revision r on r.rev_page = p.page_id', \
-                    'inner join text t on t.old_id = r.rev_text_id', \
-                ], \
+        for cols in selectGenerator(
+                self.openConn, 'category c',
+                cols=['cat_id', 'cat_title', 't.old_text'],
+                joins=[
+                    '''
+                    inner join page p
+                    on p.page_title = c.cat_title and p.page_namespace = 14
+                    ''',
+                    'inner join revision r on r.rev_page = p.page_id',
+                    'inner join text t on t.old_id = r.rev_text_id',
+                ],
                 order='cat_id asc'):
             if dict_format:
                 yield {'cat_id': cols[0], 'title': cols[1], 'text': cols[2]}
@@ -245,18 +265,21 @@ class WikiDB(BaseDB):
                 yield (cols[0], cols[1], cols[2])
 
     def allPageTitlesGenerator(self):
-        for cols in selectGenerator(self.openConn, 'page', cols=['page_title'], cond='page_namespace = 0', \
+        for cols in selectGenerator(
+                self.openConn, 'page', cols=['page_title'],
+                cond='page_namespace = 0',
                 order='page_title asc'):
             yield cols[0]
 
     def allInfoDataGenerator(self):
-        for cols in selectGenerator(self.openConn, 'page p', \
-                joins=[\
-                    'inner join revision r on r.rev_page = p.page_id', \
-                    'inner join text t on t.old_id = r.rev_text_id' \
-                ], \
-                cols=['p.page_title', 't.old_text','t.old_id'], \
-                cond='page_namespace = 10', \
+        for cols in selectGenerator(
+                self.openConn, 'page p',
+                joins=[
+                    'inner join revision r on r.rev_page = p.page_id',
+                    'inner join text t on t.old_id = r.rev_text_id'
+                ],
+                cols=['p.page_title', 't.old_text', 't.old_id'],
+                cond='page_namespace = 10',
                 order='p.page_title asc'):
 
             if not cols[0].lower().startswith('infobox') \
@@ -265,70 +288,92 @@ class WikiDB(BaseDB):
             yield (cols[2], cols[0])
 
     def allInfoRecordGenerator(self):
-        for cols in selectGenerator(self.openConn, 'an_info', cols=['text_id', 'name'], order='text_id asc'):
-            yield {'text_id':cols[0], 'name':cols[1]}
+        for cols in selectGenerator(
+                self.openConn, 'an_info',
+                cols=['text_id', 'name'], order='text_id asc'):
+            yield {'text_id': cols[0], 'name': cols[1]}
 
     def generate_pagelinks_record(self):
-        for cols in selectGenerator(self.openConn, 'pagelinks pl', \
-                cols=['pl.pl_from id_from', 'p.page_id id_to'], \
-                joins=[\
-                    'inner join page p on p.page_title = pl.pl_title and p.page_namespace = pl.pl_namespace',
+        for cols in selectGenerator(
+                self.openConn, 'pagelinks pl',
+                cols=['pl.pl_from id_from', 'p.page_id id_to'],
+                joins=[
+                    '''
+                    inner join page p
+                    on p.page_title = pl.pl_title and
+                    p.page_namespace = pl.pl_namespace
+                    ''',
                 ]):
             yield cols
 
-    def allFeaturedPageGenerator(self, dictFormat=False, featured=True, page_ids=None):
+    def allFeaturedPageGenerator(
+            self, dictFormat=False, featured=True, page_ids=None):
         conds = []
         if featured:
-            conds.append('i.featured = 1') 
+            conds.append('i.featured = 1')
         if page_ids is not None:
-            conds.append('p.page_id in (%s)' % (','.join([str(pid) for pid in page_ids]), ))
+            conds.append(
+                'p.page_id in (%s)' %
+                (','.join([str(pid) for pid in page_ids]), ))
 
-        for cols in selectGenerator(self.openConn, 'an_page p', \
-                cols=['p.page_id', 'p.name', 'p.infotype', 'p.infocontent'], \
-                joins=[\
-                    'inner join an_info i on i.name = p.infotype', \
-                ], \
-                cond= ' and '.join(conds) if len(conds) > 0 else None, \
+        for cols in selectGenerator(
+                self.openConn, 'an_page p',
+                cols=['p.page_id', 'p.name', 'p.infotype', 'p.infocontent'],
+                joins=[
+                    'inner join an_info i on i.name = p.infotype',
+                ],
+                cond=' and '.join(conds) if len(conds) > 0 else None,
                 order='p.page_id asc'):
             if dictFormat:
-                yield dict(zip(['page_id', 'name', 'infotype', 'infocontent'], cols))
+                yield dict(
+                    zip(['page_id', 'name', 'infotype', 'infocontent'], cols))
             else:
                 yield cols
 
     def allFeaturedCategoryGenerator(self):
-        for cols in selectGenerator(self.openConn, 'an_category_info ci', \
-                cols=['ci.cat_id', 'c.cat_title', 'cr.node_id', 'n.node_id'], \
-                joins=[\
-                    'inner join category c on c.cat_id = ci.cat_id', \
-                    'left join an_category_node_relation cr on cr.cat_id = ci.cat_id', \
-                    'left join integrated.node n on n.node_id = cr.node_id', \
-                ], \
-                cond='ci.featured = 1', \
+        for cols in selectGenerator(
+                self.openConn, 'an_category_info ci',
+                cols=['ci.cat_id', 'c.cat_title', 'cr.node_id', 'n.node_id'],
+                joins=[
+                    'inner join category c on c.cat_id = ci.cat_id',
+                    '''
+                    left join an_category_node_relation
+                    cr on cr.cat_id = ci.cat_id
+                    ''',
+                    'left join integrated.node n on n.node_id = cr.node_id',
+                ],
+                cond='ci.featured = 1',
                 order='ci.cat_id asc'):
             yield cols
 
     def allCategoryPageByInfotype(self, infotype):
-        for cols in selectGenerator(self.openConn, 'an_page p', \
-                cols=['c.cat_id', 'p.page_id'], \
-                joins=[\
-                    'inner join categorylinks cl on cl.cl_from = p.page_id', \
-                    'inner join category c on c.cat_title = cl.cl_to', \
-                    'inner join an_category_info ci on ci.cat_id = c.cat_id and ci.infotype = p.infotype', \
-                ],\
-                cond='ci.featured = 1 and p.infotype = %s',\
+        for cols in selectGenerator(
+                self.openConn, 'an_page p',
+                cols=['c.cat_id', 'p.page_id'],
+                joins=[
+                    'inner join categorylinks cl on cl.cl_from = p.page_id',
+                    'inner join category c on c.cat_title = cl.cl_to',
+                    '''
+                    inner join an_category_info ci on ci.cat_id = c.cat_id
+                    and ci.infotype = p.infotype
+                    ''',
+                ],
+                cond='ci.featured = 1 and p.infotype = %s',
                 order='c.cat_id asc, p.page_id asc', arg=(infotype,)):
             yield cols
 
     def _createPageInfoByPageWikiText(self, text, allowedNames):
         bracketTexts = getBracketTexts(text)
-        infos = [createPageInfoByBracketText(t, allowedNames) for t in bracketTexts]
+        infos = [
+            createPageInfoByBracketText(t, allowedNames)
+            for t in bracketTexts]
         infos = [i for i in infos if i]
         if len(infos) == 0:
             return False
         if len(infos) == 1:
             info = infos[0]
         else:
-            info = infos[0] # Apply first info.
+            info = infos[0]  # Apply first info.
 
         while 1:
             res = self.selectAndFetchAll(sqlStr("""
@@ -343,10 +388,11 @@ class WikiDB(BaseDB):
                 break
         return info
 
-    def createPageByTitle(self, title, allowedInfoNames=False, namespace=0, with_info=True):
+    def createPageByTitle(
+            self, title, allowedInfoNames=False, namespace=0, with_info=True):
         title = '_'.join(title.split(' '))
         res = self.selectAndFetchAll(sqlStr("""
-            select t.old_text wiki, p.page_id id from page p 
+            select t.old_text wiki, p.page_id id from page p
             left join revision r on r.rev_page = p.page_id
             left join text t on t.old_id = r.rev_text_id
             where p.page_title = %s and p.page_namespace = %s
@@ -356,17 +402,12 @@ class WikiDB(BaseDB):
             text = removeComment(text)
             info = None
             if with_info:
-                info = self._createPageInfoByPageWikiText(text, allowedInfoNames)
+                info = self._createPageInfoByPageWikiText(
+                    text, allowedInfoNames)
             return Page(res[0]['id'], title, text, info)
         else:
-            return False 
+            return False
 
-#    def other_lang_page_infos_generator(self, page_id):
-#            rs = self.selectAndFetchAll("""
-#                select ll_from orig_id, ll_title title, ll_lang lang from langlinks
-#                where ll_from = %s
-#            """, (page_id, ))
-#            return rs
 
 class MasterWikiDB(BaseDB):
     def __init__(self, dbname):
@@ -377,20 +418,9 @@ class MasterWikiDB(BaseDB):
             records = self.selectAndFetchAll("""
                 select lang_page_id from page_lang_relation
                 where lang = %s and lang_page_id in (
-                """ + ','.join([str(page['page_id']) for page in pages]) + ')', \
-                (lang, ) )
+                """ + ','.join([str(page['page_id']) for page in pages]) + ')',
+                (lang, ))
             found_ids = [r['lang_page_id'] for r in records]
             for page in pages:
                 if page['page_id'] not in found_ids:
                     yield page
-
-    #def build_missing_page_relation(self, lang, page_id_iter):
-    #    for missing_page_ids in \
-    #            chunked(self.missing_page_ids_generator(lang, page_id_iter), 100):
-    #        self.multiInsert('page_lang_relation', \
-    #                ['lang', 'lang_page_id'], \
-    #                [[lang, page_id] for page_id in missing_page_ids] )
-
-
-
-

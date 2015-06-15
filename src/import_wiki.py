@@ -1,11 +1,18 @@
-import argparse, sys, os, os.path, subprocess, shlex
+import argparse
+import sys
+import os
+import os.path
 import MySQLdb
 import MySQLdb.cursors
 from dbutils import TableIndexHolder
 from processutils import command
+from fileutils import Workspace
+
 
 def open_db(db):
-    return MySQLdb.connect(host="127.0.0.1", user="root", passwd="", db=db, charset='utf8')
+    return MySQLdb.connect(
+        host="127.0.0.1", user="root", passwd="", db=db, charset='utf8')
+
 
 def open_cur(conn):
     return conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
@@ -27,12 +34,15 @@ def find_dumps(path):
             rs['image'] = file
         elif file.endswith('imagelinks.sql.gz'):
             rs['imagelinks'] = file
+        elif file.endswith('redirect.sql.gz'):
+            rs['redirect'] = file
         elif file.endswith('pages-articles.xml.bz2'):
             rs['page'] = file
-    if len(rs) == 7:
-        return { key: os.path.join(path, f) for key, f in rs.items()}
+    if len(rs) == 8:
+        return {key: os.path.join(path, f) for key, f in rs.items()}
     else:
         return None
+
 
 def init_database(database, schema_file):
     if not os.path.exists(schema_file):
@@ -40,7 +50,10 @@ def init_database(database, schema_file):
 
     conn = open_db('')
     cur = open_cur(conn)
-    cur.execute('SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = %s', (database,))
+    cur.execute('''
+        SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA
+        WHERE SCHEMA_NAME = %s
+        ''', (database,))
     if len(cur.fetchall()) != 0:
         cur.close()
         conn.close()
@@ -57,7 +70,6 @@ def init_database(database, schema_file):
     cur = open_cur(conn)
     cur.execute('show table status')
     for status in cur.fetchall():
-        #if status['Name'] not in ['category', 'categorylinks', 'page', 'pagelinks', 'langlinks', 'revision', 'text']:
         if status['Name'] not in ['page', 'revision', 'text']:
             conn.query('drop table %s' % (status['Name'],))
     pass
@@ -66,23 +78,22 @@ def init_database(database, schema_file):
     return
 
 
-def import_from_sql(database, table, absolute_path, work_dir, no_index=False):
+def import_from_sql(database, table, absolute_path, no_index=False):
     def open_db_with_name():
         return open_db(database)
 
-    os.chdir(work_dir)
     rt = command('ls', output=False)
     if rt:
         raise Exception('work_space is not empty')
-        
-    command('gunzip -c %s > tmp.sql' % (absolute_path, )) 
+
+    command('gunzip -c %s > tmp.sql' % (absolute_path, ))
     command('split -b 50m tmp.sql _')
     rt = command('ls _*', output=False)
     rt = rt.split('\n')
     first_chunk = rt[0]
     schema_lines = []
     with open(first_chunk, 'r+b') as f:
-        lines  = f.readlines()
+        lines = f.readlines()
         in_create_context = False
         for i, line in enumerate(lines):
             schema_lines.append(line)
@@ -107,26 +118,25 @@ def import_from_sql(database, table, absolute_path, work_dir, no_index=False):
     command('rm -f _*')
     command('mysql -u root -h 127.0.0.1 %s < create.sql' % (database, ))
     command('rm -f create.sql')
-    holder = TableIndexHolder.open(open_db_with_name, table)
+    with TableIndexHolder(open_db_with_name, table, no_index=no_index):
+        command('mysql -u root -h 127.0.0.1 %s < tmp.sql' % (database, ))
+        command('rm -f tmp.sql')
 
-    command('mysql -u root -h 127.0.0.1 %s < tmp.sql' % (database, ))
-    command('rm -f tmp.sql')
-
-    if not no_index:
-        holder.close()
 
 def import_pages(mysql_connector_jar, mwdumper_jar, database, dump_file):
     def open_db_with_name():
         return open_db(database)
 
     tables = ['page', 'revision', 'text']
-    handlers = [TableIndexHolder.open(open_db_with_name, table) for table in tables]
-    
+    handlers = [
+        TableIndexHolder.open(open_db_with_name, table)
+        for table in tables]
+
     command("""
         java -server -classpath %s:%s \
         org.mediawiki.dumper.Dumper --output=mysql://127.0.0.1/%s?user=root  \
         --format=sql:1.5 %s
-    """ % (mysql_connector_jar, mwdumper_jar, database, dump_file) )
+    """ % (mysql_connector_jar, mwdumper_jar, database, dump_file))
 
     for h in handlers:
         h.close()
@@ -142,7 +152,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args = vars(args)
     current_dir = os.getcwd()
-    schema  = os.path.join(current_dir, args['schema'])
+    schema = os.path.join(current_dir, args['schema'])
     dump_dir = os.path.join(current_dir, args['path'])
     work_dir = os.path.join(current_dir, args['work_dir'])
     mysql_jar = os.path.join(current_dir, args['mysql_jar'])
@@ -152,16 +162,21 @@ if __name__ == '__main__':
     if not files:
         raise Exception('Not found dump files in %s.', dump_dir)
 
-    #init_database(args['db'], schema)
-
-    #import_pages(mysql_jar, wiki_jar, args['db'],  files['page'])
-    #import_from_sql(args['db'], 'category', files['category'], work_dir)
-    #import_from_sql(args['db'], 'langlinks', files['langlinks'], work_dir)
-    import_from_sql(args['db'], 'imagelinks', files['imagelinks'], work_dir)
-    sys.exit()
-    import_from_sql(args['db'], 'image', files['image'], work_dir)
-    import_from_sql(args['db'], 'categorylinks', files['categorylinks'], work_dir, no_index=True)
-    import_from_sql(args['db'], 'pagelinks', files['pagelinks'], work_dir, no_index=True)
+    with Workspace(work_dir):
+        # import_pages(mysql_jar, wiki_jar, args['db'],  files['page'])
+        # import_from_sql(args['db'], 'category', files['category'])
+        # import_from_sql(args['db'], 'langlinks', files['langlinks'])
+        import_from_sql(args['db'], 'redirect', files['redirect'])
+        sys.exit()
+        import_from_sql(
+            args['db'], 'imagelinks', files['imagelinks'])
+        import_from_sql(
+            args['db'], 'image', files['image'], work_dir)
+        import_from_sql(
+            args['db'], 'categorylinks', files['categorylinks'],
+            no_index=True)
+        import_from_sql(
+            args['db'], 'pagelinks', files['pagelinks'], no_index=True)
 
     conn = open_db(args['db'])
     """
@@ -175,6 +190,3 @@ if __name__ == '__main__':
     conn.close()
 
     print('Finished')
-
-    
-
