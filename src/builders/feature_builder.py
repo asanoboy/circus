@@ -28,18 +28,36 @@ def find_links_from_wiki(wiki_text):
 
 def page_name_to_dict(wiki_db, name):
     name = '_'.join(name.split(' '))
-    rs = wiki_db.selectAndFetchAll('''
-        select page_id, page_title name from page
+    page = wiki_db.selectOne('''
+        select
+        page_id, page_title name,
+        page_is_redirect is_redirect ,
+        page_namespace namespace
+        from page
         where page_title = %s and page_namespace = 0
     ''', args=(name,), decode=True)
-    if len(rs) == 1:
-        return rs[0]
-    elif name[0].islower():
-        capitalized = name[0].upper() + name[1:]
-        return page_name_to_dict(wiki_db, capitalized)
-    else:
-        print(wiki_db.lang, 'Not found page_id by name', name)
-        return None
+
+    if page is None:
+        if name[0].islower():
+            capitalized = name[0].upper() + name[1:]
+            page = page_name_to_dict(wiki_db, capitalized)
+        else:
+            print(wiki_db.lang, 'Not found page_id by name', name)
+            return None
+
+    if page and page['is_redirect'] != 0:
+        redirect = wiki_db.selectOne('''
+            select rd_title name from redirect
+            where rd_from = %s and rd_namespace = %s
+        ''', args=(page['page_id'], page['namespace']), decode=True)
+        if redirect is None:
+            print(
+                wiki_db.lang,
+                'Not found redirect from page_id=', page['page_id'])
+            return page  # TODO
+        print('Found redirect from', name, 'to', redirect['name'])
+        page = page_name_to_dict(wiki_db, redirect['name'])
+    return page
 
 
 class FeatureItemRelationManager:

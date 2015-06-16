@@ -72,7 +72,7 @@ create view v_feature_item_lang_view as
 select fil.*, ip2.name feature_name, ip.name item_name from feature_item_lang fil
 inner join item_page ip on ip.item_id = fil.item_id and ip.lang = fil.lang
 inner join feature f on f.feature_id = fil.feature_id
-inner join item_page ip2 on f.item_id = ip2.item_id
+inner join item_page ip2 on ip2.item_id = f.item_id and ip2.lang = fil.lang
 ;
 
 /*

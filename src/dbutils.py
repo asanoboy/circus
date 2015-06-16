@@ -5,6 +5,7 @@ from models import Page, createPageInfoByBracketText
 from parser import getBracketTexts, removeComment
 from circus_itertools import lazy_chunked as chunked
 
+
 class TableIndex:
     def __init__(self, name, isUnique):
         self.type = type
@@ -16,9 +17,10 @@ class TableIndex:
     def addCol(self, col):
         self.cols.append(col)
 
+
 class TableIndexHolder:
     def __init__(self, openConn, table, no_index=False):
-        self.openConn = openConn 
+        self.openConn = openConn
         self.indexList = []
         self.table = table
         self.no_index = no_index
@@ -166,15 +168,17 @@ class BaseDB:
         if len(valuesList) == 0:
             return
         cur = self.write_conn.cursor()
+
+        if on_duplicate is not None:
+            on_duplicate_sql = ' on duplicate key update ' + on_duplicate
+        else:
+            on_duplicate_sql = ''
         cur.execute(("""
             insert into %s (%s)
             values
-            """ % (table, ','.join(cols)))
-            + ','.join(
+            """ % (table, ','.join(cols))) + ','.join(
                 ['(' + ','.join(['%s'] * len(cols)) + ')'] * len(valuesList)
-                )
-            + ((' on duplicate key update ' + on_duplicate)
-                if on_duplicate is not None else ''),
+                ) + on_duplicate_sql,
             tuple(chain.from_iterable(valuesList))
         )
         cur.close()
@@ -207,6 +211,13 @@ class BaseDB:
         return selectGenerator(
             self.openConn, table, cols, joins, cond,
             order, arg, dict_format)
+
+    def selectOne(self, query, args=set(), decode=False):
+        rs = self.selectAndFetchAll(query, args=args, decode=decode)
+        if len(rs) == 0:
+            return None
+        else:
+            return rs[0]
 
     def selectAndFetchAll(
             self, query, args=set(), dictFormat=True, decode=False):
