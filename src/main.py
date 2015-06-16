@@ -11,6 +11,7 @@ from builders.page_builder import PageBuilder
 from builders.itemtag_builder import ItemTagBuilder
 from builders.feature_builder import FeatureBuilder
 from builders.item_feature_builder import ItemFeatureBuilder
+from builders.popularity_calc import PopularityCalc
 
 
 class BuilderHolder:
@@ -79,5 +80,6 @@ if __name__ == '__main__':
         holder.build()
 
     holder = BuilderHolder('master')
-    holder.push(ItemFeatureBuilder(master_db))
+    #holder.push(ItemFeatureBuilder(master_db))
+    holder.push(PopularityCalc(master_db, [WikiDB(l) for l in imported_langs]))
     holder.build()

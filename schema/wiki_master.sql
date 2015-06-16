@@ -10,7 +10,7 @@ create table item_page (
     lang varchar(20) not null,
     page_id int not null,
     name varchar(255) not null, 
-    view_count int not null,
+    popularity float not null,
     primary key(item_id, lang),
     index lang(lang, page_id)
 );

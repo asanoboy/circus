@@ -34,8 +34,7 @@ class ItemTagBuilderBase:
             cols=['item_id'],
             cond='tag_id=%s',
             order='item_id asc',
-            arg=(self.lang,),
-            dict_format=True)
+            args=(self.lang,))
 
         syncer = Syncer(item_id_iter, exists_id_iter, ['item_id'], True)
         for records in chunked(syncer.generate_for_insert(), 1000):
@@ -70,16 +69,14 @@ class _MusicArtistBuilder(ItemTagBuilderBase):
             cols=['p.page_id page_id', 'p.name name'],
             cond='infotype=%s',
             order='page_id asc',
-            arg=(infotype,),
-            dict_format=True)
+            args=(infotype,))
 
         dest_dict_iter = self.master_db.generate_records(
             'item_page',
             cols=['page_id', 'name'],
             cond='lang=%s',
             order='page_id asc',
-            arg=(self.lang,),
-            dict_format=True)
+            args=(self.lang,))
 
         syncer = Syncer(source_dict_iter, dest_dict_iter, ['page_id'], True)
         return syncer.generate_for_insert()

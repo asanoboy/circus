@@ -254,7 +254,7 @@ class ItemPageRelationManager:
 
             self.master_db.multiInsert(
                 'item_page',
-                ['page_id', 'name', 'lang', 'item_id', 'view_count'],
+                ['page_id', 'name', 'lang', 'item_id', 'popularity'],
                 [[
                     p['page_id'],
                     p['name'],

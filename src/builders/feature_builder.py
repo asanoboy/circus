@@ -102,7 +102,7 @@ class FeatureItemRelationManager:
             self._generate_feature_pages(),
             self.master_db.generate_records(
                 'item_page', cols=['page_id'], cond='lang=%s',
-                order='page_id asc', dict_format=True, arg=(self.lang,)),
+                order='page_id asc', args=(self.lang,)),
             ['page_id'], True)
         insert_page_iter = syncer.generate_for_insert()
         self.ipr_manager.merge_page_to_item(insert_page_iter)
@@ -155,8 +155,7 @@ class FeatureItemRelationManager:
                 'feature', cols=['item_id'],
                 cond='feature_type_id=%s',
                 order='item_id asc',
-                arg=(self.feature_type_id,),
-                dict_format=True),
+                args=(self.feature_type_id,)),
             ['item_id'], True)
         insert_iter = syncer.generate_for_insert()
         for records in chunked(insert_iter, 100):
@@ -176,8 +175,7 @@ class FeatureItemRelationManager:
                 'feature_item_lang', cols=['feature_id', 'item_id'],
                 cond='lang=%s',
                 order='feature_id asc, item_id asc',
-                arg=(self.lang,),
-                dict_format=True),
+                args=(self.lang,)),
             ['item_id'], True)
         insert_iter = syncer.generate_for_insert()
 
@@ -257,7 +255,7 @@ class _MusicGenreBuilder:
         return self.lang_db.generate_records(
             'an_page', cols=['page_id', 'infocontent'],
             cond='infotype = %s',
-            arg=(self.infotype,), dict_format=True)
+            args=(self.infotype,))
 
     def find_feature_from_page(self, page):
         wiki_object = json.loads(page['infocontent'])

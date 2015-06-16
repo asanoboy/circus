@@ -207,12 +207,12 @@ class BaseDB:
 
     def generate_records(
             self, table, cols=[], joins=[], cond='',
-            order='', arg=set(), dict_format=False):
+            order='', args=set(), dict_format=True):
         return selectGenerator(
             self.openConn, table, cols, joins, cond,
-            order, arg, dict_format)
+            order, args, dict_format)
 
-    def selectOne(self, query, args=set(), decode=False):
+    def selectOne(self, query, args=set(), decode=True):
         rs = self.selectAndFetchAll(query, args=args, decode=decode)
         if len(rs) == 0:
             return None
@@ -220,7 +220,7 @@ class BaseDB:
             return rs[0]
 
     def selectAndFetchAll(
-            self, query, args=set(), dictFormat=True, decode=False):
+            self, query, args=set(), dictFormat=True, decode=True):
         cur = None
         if dictFormat:
             cur = self.read_conn.cursor(cursorclass=MySQLdb.cursors.DictCursor)
