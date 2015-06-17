@@ -19,7 +19,8 @@ def find_links_from_wiki(wiki_text):
             break
 
         content = wiki_text[pos_open+2: pos_close]
-        link = content.split('|').pop().strip()
+        # link = content.split('|').pop().strip()
+        link = content.split('|')[0].strip()
         links.append(link)
         needle = pos_close + 2
 
@@ -30,10 +31,13 @@ def page_name_to_dict(wiki_db, name):
     name = '_'.join(name.split(' '))
     page = wiki_db.selectOne('''
         select
-        page_id, page_title name,
-        page_is_redirect is_redirect ,
-        page_namespace namespace
-        from page
+        p.page_id,
+        p.page_title name,
+        p.page_is_redirect is_redirect ,
+        p.page_namespace namespace,
+        ap.infotype
+        from page p
+        left join an_page ap on ap.page_id = p.page_id
         where page_title = %s and page_namespace = 0
     ''', args=(name,), decode=True)
 
@@ -233,9 +237,11 @@ class _MusicGenreBuilder:
         lang = lang_db.lang
         if lang == 'en':
             self.infotype = 'Infobox_musical_artist'
+            self.target_infotypes = ['Infobox_music_genre', None]
             self.key = 'genre'
         elif lang == 'ja':
             self.infotype = 'Infobox_Musician'
+            self.target_infotypes = ['Infobox_Music_genre', None]
             self.key = 'ジャンル'
         else:
             raise Exception('lang = %s is not supported.' % (lang,))
@@ -264,7 +270,10 @@ class _MusicGenreBuilder:
             names = find_links_from_wiki(wiki_text)
             pages = [self._page_name_to_dict(name) for name in names]
             pages = [p for p in pages if p is not None]
-            return pages
+            pages = filter(
+                lambda x: x['infotype'] in self.target_infotypes,
+                pages)
+            return list(pages)
         return []
 
     def build(self):

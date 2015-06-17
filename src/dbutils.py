@@ -409,7 +409,7 @@ class WikiDB(BaseDB):
             where p.page_title = %s and p.page_namespace = %s
             """), (title, namespace))
         if len(res) > 0:
-            text = res[0]['wiki'].decode('utf-8')
+            text = res[0]['wiki']
             text = removeComment(text)
             info = None
             if with_info:

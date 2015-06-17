@@ -254,13 +254,12 @@ class ItemPageRelationManager:
 
             self.master_db.multiInsert(
                 'item_page',
-                ['page_id', 'name', 'lang', 'item_id', 'popularity'],
+                ['page_id', 'name', 'lang', 'item_id'],
                 [[
                     p['page_id'],
                     p['name'],
                     self.lang,
                     page_id_to_item_id[p['page_id']],
-                    0,
                 ] for p in pages])
 
             self.page_id_to_item_id.update(page_id_to_item_id)
