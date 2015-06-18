@@ -1,6 +1,82 @@
 from circus_itertools import lazy_chunked as chunked
 
 
+def page_name_to_dict(wiki_db, name):
+    name = '_'.join(name.split(' '))
+    page = wiki_db.selectOne('''
+        select
+        p.page_id,
+        p.page_title name,
+        p.page_is_redirect is_redirect ,
+        p.page_namespace namespace,
+        ap.infotype
+        from page p
+        left join an_page ap on ap.page_id = p.page_id
+        where page_title = %s and page_namespace = 0
+    ''', args=(name,), decode=True)
+
+    if page is None:
+        if name[0].islower():
+            capitalized = name[0].upper() + name[1:]
+            page = page_name_to_dict(wiki_db, capitalized)
+        else:
+            print(wiki_db.lang, 'Not found page_id by name', name)
+            return None
+
+    if page and page['is_redirect'] != 0:
+        redirect = wiki_db.selectOne('''
+            select rd_title name from redirect
+            where rd_from = %s and rd_namespace = %s
+        ''', args=(page['page_id'], page['namespace']), decode=True)
+        if redirect is None:
+            print(
+                wiki_db.lang,
+                'Not found redirect from page_id=', page['page_id'])
+            return None  # TODO: in case that namespaces are different
+        print('Found redirect from', name, 'to', redirect['name'])
+        page = page_name_to_dict(wiki_db, redirect['name'])
+    return page
+
+
+class PageFactory:
+    def __init__(self, lang_db):
+        self.db = lang_db
+        self._name_to_page = {}
+
+    def page_name_to_dict(self, name):
+        if name in self._name_to_page:
+            return self._name_to_page[name]
+
+        page = page_name_to_dict(self.db, name)
+        if page:
+            self._name_to_page[name] = page
+        return page
+
+
+def find_links_from_wiki(wiki_text):
+    links = []
+    needle = 0
+    while 1:
+        pos_open = wiki_text.find('[[', needle)
+        pos_close = wiki_text.find(']]', needle)
+        if pos_open == -1 and pos_close == -1:
+            break
+        elif pos_open == -1 or pos_close == -1:
+            print('Parse error1', wiki_text)
+            break
+        elif pos_open > pos_close:
+            print('Parse error2', wiki_text)
+            break
+
+        content = wiki_text[pos_open+2: pos_close]
+        # link = content.split('|').pop().strip()
+        link = content.split('|')[0].strip()
+        links.append(link)
+        needle = pos_close + 2
+
+    return links
+
+
 def is_equal_as_pagename(a, b):
     return '_'.join(a.split(' ')) == \
            '_'.join(b.split(' '))

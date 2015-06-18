@@ -12,6 +12,7 @@ from builders.itemtag_builder import ItemTagBuilder
 from builders.feature_builder import FeatureBuilder
 from builders.item_feature_builder import ItemFeatureBuilder
 from builders.popularity_calc import PopularityCalc
+from builders.feature_relation_builder import FeatureRelationBuilder
 
 
 class BuilderHolder:
@@ -66,20 +67,23 @@ if __name__ == '__main__':
     imported_langs = ['en', 'ja']
 
     master_db = MasterWikiDB('wikimaster')
+    lang_dbs = [WikiDB(l) for l in imported_langs]
     for lang in langs:
         wiki_db = WikiDB(lang)
-        other_dbs = [WikiDB(l) for l in imported_langs if l != lang]
+        other_dbs = [db for db in lang_dbs if db.lang != lang]
 
         holder = BuilderHolder(lang)
         #holder.push(PageBuilder(wiki_db))
         #holder.push(PagelinksBuilder(wiki_db))
         #holder.push(PagelinksFilteredBuilder(wiki_db))
         #holder.push(PagelinksFeaturedBuilder(wiki_db))
+
         #holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
         #holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
         holder.build()
 
     holder = BuilderHolder('master')
     #holder.push(ItemFeatureBuilder(master_db))
-    holder.push(PopularityCalc(master_db, [WikiDB(l) for l in imported_langs]))
+    #holder.push(PopularityCalc(master_db, lang_dbs))
+    holder.push(FeatureRelationBuilder(master_db, lang_dbs))
     holder.build()

@@ -61,7 +61,7 @@ create table feature_item (
     index item_id(item_id)
 );
 
-create table feature_feature (
+create table feature_relation (
     id_from int not null,
     id_to int not null,
     strength float not null,
