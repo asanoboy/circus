@@ -164,6 +164,9 @@ class BaseDB:
     def open_conn(self):
         return self.openConn()
 
+    def last_id(self):
+        return self.write_conn.insert_id()
+
     def _multiInsert(self, table, cols, valuesList, on_duplicate):
         if len(valuesList) == 0:
             return

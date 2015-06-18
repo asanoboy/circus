@@ -1,13 +1,10 @@
-
-#def name_in_content(name, content):
-#    return content.find(name) != -1 or content.find(' '.join(name.split('_'))) != -1
-
 def pos_in_content(name, content):
     pos = content.find(name)
     if pos != -1:
         return pos
 
     return content.find(' '.join(name.split('_')))
+
 
 class Category:
     id = False
@@ -17,55 +14,55 @@ class Category:
         self.id = id
         self.name = name
 
+
 class PageInfo:
-    name = False
-    keyValue = {}
     def __init__(self, name, keyValue):
         self.name = name
         self.keyValue = keyValue
 
+
 class Page:
-    #def __init__(self, id, title, contentlength, info):
     def __init__(self, id, title, text, info):
         self.id = id
         self.title = title
         self.contentlength = len(text)
         self.text = text
         self.info = info
-        
+
     @staticmethod
     def _findInfobox(text):
         startPos = text.find("{{Infobox")
-        if( startPos == -1 ):
+        if(startPos == -1):
             return False
-        currentPos = startPos + 2;
+        currentPos = startPos + 2
         depth = 0
-        while(1):
+        while 1:
             startBracketPos = text.find("{{", currentPos)
             endBracketPos = text.find("}}", currentPos)
-            if( endBracketPos == -1 ):
+            if endBracketPos == -1:
                 print(text)
                 raise
 
-            if( startBracketPos > 0 and startBracketPos < endBracketPos ):
+            if startBracketPos > 0 and startBracketPos < endBracketPos:
                 depth += 1
                 currentPos = startBracketPos + 2
-            elif( depth==0 ):
+            elif depth == 0:
                 return text[startPos: endBracketPos+2]
             else:
                 depth -= 1
                 currentPos = endBracketPos + 2
         raise
 
+
 def createPageInfoByBracketText(text, allowedNames=False):
     pos = text.find('|')
-    if pos == -1: 
+    if pos == -1:
         return False
 
     name = text[:pos].strip().replace(' ', '_') \
-        .replace('　', '_') # multibyte space
-    
-    if allowedNames != False:
+        .replace('　', '_')  # multibyte space
+
+    if allowedNames is not False:
         if name not in allowedNames:
             return False
 
@@ -76,7 +73,7 @@ def createPageInfoByBracketText(text, allowedNames=False):
         separator_pos = text.find('|', search_pos)
         if separator_pos == -1:
             break
-            
+
         curly_pos = text.find('{{', search_pos)
         if curly_pos != -1 and curly_pos < separator_pos:
             end_pos = text.find('}}', curly_pos)
@@ -99,8 +96,8 @@ def createPageInfoByBracketText(text, allowedNames=False):
         start_pos = separator_pos + 1
         search_pos = start_pos
 
-    parts = [ part.split('=') for part in key_value_list if part.find('=')>=0 ]
-    keyValue = { elems[0].strip(): elems[1].strip() for elems in parts if len(elems) == 2 }
+    parts = [part.split('=') for part in key_value_list if part.find('=') >= 0]
+    keyValue = {
+        elems[0].strip(): '='.join(elems[1:]).strip()
+        for elems in parts}
     return PageInfo(name, keyValue)
-    
-
