@@ -13,6 +13,7 @@ from builders.feature_builder import FeatureBuilder
 from builders.item_feature_builder import ItemFeatureBuilder
 from builders.popularity_calc import PopularityCalc
 from builders.feature_relation_builder import FeatureRelationBuilder
+from builders.strength_calc import StrengthCalc
 
 
 class BuilderHolder:
@@ -59,5 +60,6 @@ if __name__ == '__main__':
     holder = BuilderHolder('master')
     #holder.push(ItemFeatureBuilder(master_db))
     #holder.push(PopularityCalc(master_db, lang_to_db.values()))
-    holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
+    #holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
+    holder.push(StrengthCalc(master_db))
     holder.build()
