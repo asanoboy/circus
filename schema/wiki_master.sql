@@ -70,10 +70,12 @@ create table feature_relation (
 );
 
 create view v_feature_item_lang_view as
-select fil.*, ip2.name feature_name, ip.name item_name from feature_item_lang fil
+select f.item_id feature_item_id, ip_fe.name feature_name,
+ip.item_id, ip.name item_name,
+ip.popularity, ip.viewcount from feature_item_lang fil
 inner join item_page ip on ip.item_id = fil.item_id and ip.lang = fil.lang
 inner join feature f on f.feature_id = fil.feature_id
-inner join item_page ip2 on ip2.item_id = f.item_id and ip2.lang = fil.lang
+inner join item_page ip_fe on ip_fe.item_id = f.item_id and ip_fe.lang = fil.lang
 ;
 
 /*
