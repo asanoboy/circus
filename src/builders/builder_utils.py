@@ -33,7 +33,7 @@ def page_name_to_dict(wiki_db, name):
                 wiki_db.lang,
                 'Not found redirect from page_id=', page['page_id'])
             return None  # TODO: in case that namespaces are different
-        print('Found redirect from', name, 'to', redirect['name'])
+        # print('Found redirect from', name, 'to', redirect['name'])
         page = page_name_to_dict(wiki_db, redirect['name'])
     return page
 

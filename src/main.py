@@ -39,25 +39,25 @@ if __name__ == '__main__':
     imported_langs = ['en', 'ja']
 
     master_db = MasterWikiDB('wikimaster')
-    lang_dbs = [WikiDB(l) for l in imported_langs]
+    lang_to_db = { l: WikiDB(l) for l in imported_langs }
     for lang in langs:
-        wiki_db = WikiDB(lang)
-        other_dbs = [db for db in lang_dbs if db.lang != lang]
+        wiki_db = lang_to_db[lang]
+        other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
 
         holder = BuilderHolder(lang)
         #holder.push(InfoBuilder(wiki_db))
-        holder.push(PageBuilder(wiki_db))
+        #holder.push(PageBuilder(wiki_db))
         #holder.push(CategoryBuilder(wiki_db))
         #holder.push(PagelinksBuilder(wiki_db))
         #holder.push(PagelinksFilteredBuilder(wiki_db))
         #holder.push(PagelinksFeaturedBuilder(wiki_db))
 
-        holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-        holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
+        #holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
+        #holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
         holder.build()
 
     holder = BuilderHolder('master')
-    holder.push(ItemFeatureBuilder(master_db))
-    holder.push(PopularityCalc(master_db, lang_dbs))
-    holder.push(FeatureRelationBuilder(master_db, lang_dbs))
+    #holder.push(ItemFeatureBuilder(master_db))
+    #holder.push(PopularityCalc(master_db, lang_to_db.values()))
+    holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
     holder.build()

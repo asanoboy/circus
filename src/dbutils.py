@@ -155,6 +155,7 @@ class BaseDB:
         self.write_conn = self.openConn()
         self.read_conn = self.openConn()
         self.insert_records_num = {}
+        self.update_query_num = 0
 
     def openConn(self):
         return MySQLdb.connect(
@@ -207,6 +208,7 @@ class BaseDB:
         cur = self.write_conn.cursor()
         cur.execute(query, args)
         cur.close()
+        self.update_query_num += 1
 
     def generate_records(
             self, table, cols=[], joins=[], cond='',
@@ -248,8 +250,10 @@ class BaseDB:
         print('commit')
         print('Inserted to following tables.')
         print(self.insert_records_num)
+        print('Updated by %s queries.' % (self.update_query_num,))
 
         self.insert_records_num = {}
+        self.update_query_num = 0
         self.write_conn.commit()
         self.read_conn.close()
         self.read_conn = self.openConn()
