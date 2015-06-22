@@ -53,13 +53,13 @@ if __name__ == '__main__':
         #holder.push(PagelinksFilteredBuilder(wiki_db))
         #holder.push(PagelinksFeaturedBuilder(wiki_db))
 
-        #holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-        #holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
+        holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
+        holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
         holder.build()
 
     holder = BuilderHolder('master')
-    #holder.push(ItemFeatureBuilder(master_db))
-    #holder.push(PopularityCalc(master_db, lang_to_db.values()))
-    #holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
+    holder.push(ItemFeatureBuilder(master_db))
+    holder.push(PopularityCalc(master_db, lang_to_db.values()))
+    holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
     holder.push(StrengthCalc(master_db))
     holder.build()

@@ -25,8 +25,10 @@ class ItemList:
             self.id_to_val.items(), key=lambda x: -x[1])]
         rs = [db.selectOne(
             '''
-            select item_id, name, popularity
-            from item_page where item_id=%s
+            select
+                ip.item_id, ip.name, ip.popularity
+            from item_page ip
+            where ip.item_id=%s
             ''', args=(item_id,)) for item_id in ids]
         return rs
 
@@ -58,11 +60,21 @@ class ItemList:
         return rt
 
 
+def find_features(db, item_id):
+    return db.selectAndFetchAll('''
+        select fi.feature_id, ip.*
+        from feature_item fi
+        inner join feature f on f.feature_id = fi.feature_id
+        inner join item_page ip on ip.item_id = f.item_id
+        where fi.item_id = %s
+        ''', args=(item_id,))
+
+
 def get_items(db, ids):
     rs = db.selectAndFetchAll('''
         select
             fi2.item_id,
-            fi.strength * ff.strength * fi2.strength strength
+            fi.strength + ff.strength + fi2.strength strength
         from feature_item fi
         inner join feature_relation ff on ff.id_from = fi.feature_id
         inner join feature_item fi2 on fi2.feature_id = ff.id_to
@@ -81,17 +93,18 @@ def get_items(db, ids):
 def get_popular_items(db, lang):
     rs = db.selectAndFetchAll('''
         select
-            item_id
-        from item_page
-        where lang = %s
-        order by popularity desc
+            i.item_id
+        from item_page ip
+        inner join item i on i.item_id = ip.item_id and i.visible = 1
+        where ip.lang = %s
+        order by ip.popularity desc
         limit %s
     ''', args=(lang, 100))
     return ItemList({r['item_id']: 0 for r in rs})
 
 
 def popularity_filter(records, knows, unknowns):
-    return records
+    return records[:100]
 
 
 def find_item(lang, db, action_history):
@@ -116,6 +129,8 @@ def find_item(lang, db, action_history):
     records = items.records_sorted_by_strength(db)
     records = [r for r in records if r['item_id'] not in all_ids]
     records = popularity_filter(records, knows, unknowns)
+
+    index = rand(len(records))
     return records[rand(len(records))]
 
 
@@ -159,9 +174,23 @@ class Client:
 
             if num == 'q':
                 break
-
-            self.action_history.append(Action(num, self.next_item))
-            self.next_item = find_item(self.lang, self.db, self.action_history)
+            elif num == 'f':
+                features = find_features(self.db, self.next_item['item_id'])
+                for f in features:
+                    print(f)
+                continue
+            elif num == 'i':
+                pages = self.db.selectAndFetchAll('''
+                    select * from item_page where item_id = %s
+                    ''', args=(self.next_item['item_id'],))
+                for p in pages:
+                    print(p)
+                continue
+            elif num == '1' or num == '2' or num == '3':
+                self.action_history.append(Action(num, self.next_item))
+                self.next_item = find_item(self.lang, self.db, self.action_history)
+            else:
+                continue
 
 
 if __name__ == '__main__':

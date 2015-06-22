@@ -247,7 +247,7 @@ class Merger:
 
 
 class ItemPageRelationManager:
-    def __init__(self, master_db, lang_db, other_lang_dbs):
+    def __init__(self, master_db, lang_db, other_lang_dbs, visible=1):
         self.master_db = master_db
         self.lang_db = lang_db
         self.lang = lang_db.lang
@@ -255,6 +255,7 @@ class ItemPageRelationManager:
         self._last_item_id = None
         self.created_item_ids = []
         self.page_id_to_item_id = {}
+        self.visible = visible
 
     def _get_last_item_id(self):
         if self._last_item_id is None:
@@ -325,7 +326,7 @@ class ItemPageRelationManager:
                 'item', ['item_id', 'visible'],
                 [[
                     page_id_to_item_id[p['page_id']],
-                    1,
+                    self.visible,
                 ] for p in new_pages])
 
             self.master_db.multiInsert(

@@ -25,7 +25,8 @@ class FeatureItemRelationManager:
 
         self.ipr_manager = ItemPageRelationManager(
             master_db, lang_db,
-            other_lang_dbs)
+            other_lang_dbs,
+            0)
 
     def _load(self):
         for page in self.page_generator():
@@ -207,14 +208,18 @@ class _MusicGenreBuilder:
         wiki_object = json.loads(page['infocontent'])
         if self.key in wiki_object:
             wiki_text = wiki_object[self.key]
-            names = find_links_from_wiki(wiki_text)
-            pages = [self._page_name_to_dict(name) for name in names]
-            pages = [p for p in pages if p is not None]
-            pages = filter(
-                lambda x: x['infotype'] in self.target_infotypes,
-                pages)
-            return list(pages)
-        return []
+        elif self.key.capitalize() in wiki_object:
+            wiki_text = wiki_object[self.key.capitalize()]
+        else:
+            return []
+
+        names = find_links_from_wiki(wiki_text)
+        pages = [self._page_name_to_dict(name) for name in names]
+        pages = [p for p in pages if p is not None]
+        pages = filter(
+            lambda x: x['infotype'] in self.target_infotypes,
+            pages)
+        return list(pages)
 
     def build(self):
         self.fir_manager.build()

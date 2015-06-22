@@ -56,6 +56,8 @@ class FeatureRelationStrengthCalc:
         where id_from < id_to
         ''')
 
+        base_strength = 100  # TODO
+
         for relation in relations:
             id_from = relation['id_from']
             id_to = relation['id_to']
@@ -67,6 +69,7 @@ class FeatureRelationStrengthCalc:
             joined.extend(feature_id_to_items[id_to])
             joined_num = len(joined)
             strength = (joined_num - len(set(joined))) / joined_num
+            strength = math.pow(base_strength, strength)
             self.db.updateQuery('''
             update feature_relation
             set strength = %s

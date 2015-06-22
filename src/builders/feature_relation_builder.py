@@ -95,7 +95,7 @@ class FeatureRelationBuilder:
                         relations.extend(rels)
 
             relations_by_langs[lang] = relations
-            return relations_by_langs
+        return relations_by_langs
 
     def build(self):
         relations_by_lang = self._create_relation_map()
