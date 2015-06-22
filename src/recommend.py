@@ -22,17 +22,10 @@ class ItemList:
 
         self.id_to_val[item_id] = val
 
-    def records_sorted_by_strength(self, db):
+    def ids_sorted_by_strength(self, db):
         ids = [r[0] for r in sorted(
             self.id_to_val.items(), key=lambda x: -x[1])]
-        rs = [db.selectOne(
-            '''
-            select
-                ip.item_id, ip.name, ip.popularity
-            from item_page ip
-            where ip.item_id=%s
-            ''', args=(item_id,)) for item_id in ids]
-        return rs
+        return ids
 
     def records_for_debug(self, db):
         ids = [r[0] for r in sorted(
@@ -97,10 +90,6 @@ def get_popular_items(db, lang):
     return ItemList({r['item_id']: 0 for r in rs})
 
 
-def popularity_filter(records, knows, unknowns):
-    return records[:100]
-
-
 def find_item(lang, db, action_history, recommender):
     all_ids = [a.item_id for a in action_history]
     likes = [a.item_id for a in action_history if a.input_type <= 1]
@@ -123,11 +112,17 @@ def find_item(lang, db, action_history, recommender):
 
     with Lap('calc post-process'):
         items = positive_items - negative_items
-        records = items.records_sorted_by_strength(db)
-        records = [r for r in records if r['item_id'] not in all_ids]
-        records = popularity_filter(records, knows, unknowns)
+        ids = items.ids_sorted_by_strength(db)
+        ids = [i for i in ids if i not in all_ids]
 
-    return records[rand(len(records))]
+    item_id = ids[rand(len(ids))]
+    return db.selectOne('''
+        select * from item_page
+        where item_id = %s and lang = %s
+        ''', args=(item_id, lang))
+
+
+use_ff = False
 
 
 class Recommender:
@@ -145,17 +140,18 @@ class Recommender:
                     r['feature_id'],
                     r['strength'])
 
-            feature_feature_mtx = RelationMatrix(
-                src=item_feature_mtx.get_dst(),
-                dst=item_feature_mtx.get_dst())
+            if use_ff:
+                feature_feature_mtx = RelationMatrix(
+                    src=item_feature_mtx.get_dst(),
+                    dst=item_feature_mtx.get_dst())
 
-            for r in self.db.selectAndFetchAll('''
-                    select id_from, id_to, strength
-                    from feature_relation'''):
-                feature_feature_mtx.append(
-                    r['id_from'],
-                    r['id_to'],
-                    r['strength'])
+                for r in self.db.selectAndFetchAll('''
+                        select id_from, id_to, strength
+                        from feature_relation'''):
+                    feature_feature_mtx.append(
+                        r['id_from'],
+                        r['id_to'],
+                        r['strength'])
 
         with Lap('build item_feature'):
             item_feature_mtx.build()
@@ -163,17 +159,13 @@ class Recommender:
         with Lap('build feature_item'):
             feature_item_mtx = item_feature_mtx.create_inverse()
 
-        with Lap('build feature_feature'):
-            feature_feature_mtx.build()
-
-        #with Lap('build item_item_1'):
-        #    self.item_item_mtx = feature_feature_mtx * item_feature_mtx
-
-        #with Lap('build item_item_2'):
-        #    self.item_item_mtx = feature_item_mtx * self.item_item_mtx
+        if use_ff:
+            with Lap('build feature_feature'):
+                feature_feature_mtx.build()
 
         self.item_feature_mtx = item_feature_mtx
-        self.feature_feature_mtx = feature_feature_mtx
+        if use_ff:
+            self.feature_feature_mtx = feature_feature_mtx
         self.feature_item_mtx = feature_item_mtx
 
     def find_items(self, item_ids):
@@ -189,7 +181,8 @@ class Recommender:
         #         ''', args=(feature_id,))
         #         for feature_id, strength in feature_dict.items()]:
         #     print(record)
-        # feature_dict = self.feature_feature_mtx * feature_dict
+        if use_ff:
+            feature_dict = self.feature_feature_mtx * feature_dict
         # print('---------')
         # for record in [
         #         self.db.selectOne('''
