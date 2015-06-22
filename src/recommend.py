@@ -1,6 +1,8 @@
 import random
 import time
 from dbutils import MasterWikiDB
+from numerical import RelationMatrix
+from debug import Lap
 
 
 def rand(maxim=1000):
@@ -30,6 +32,18 @@ class ItemList:
             from item_page ip
             where ip.item_id=%s
             ''', args=(item_id,)) for item_id in ids]
+        return rs
+
+    def records_for_debug(self, db):
+        ids = [r[0] for r in sorted(
+            self.id_to_val.items(), key=lambda x: -x[1])]
+        rs = [(db.selectOne(
+            '''
+            select
+                ip.item_id, ip.name, ip.popularity
+            from item_page ip
+            where ip.item_id=%s
+            ''', args=(item_id,)), self.id_to_val[item_id]) for item_id in ids]
         return rs
 
     def __add__(self, other):
@@ -70,26 +84,6 @@ def find_features(db, item_id):
         ''', args=(item_id,))
 
 
-def get_items(db, ids):
-    rs = db.selectAndFetchAll('''
-        select
-            fi2.item_id,
-            fi.strength + ff.strength + fi2.strength strength
-        from feature_item fi
-        inner join feature_relation ff on ff.id_from = fi.feature_id
-        inner join feature_item fi2 on fi2.feature_id = ff.id_to
-        where fi.item_id in (%s)
-        order by strength desc
-        ''' % (','.join([str(i) for i in ids])))
-    if len(rs) == 0:
-        return ItemList()
-
-    threshold = rs[0]['strength'] * 0.5
-    return ItemList({
-        r['item_id']: r['strength']
-        for r in rs if r['strength'] > threshold})
-
-
 def get_popular_items(db, lang):
     rs = db.selectAndFetchAll('''
         select
@@ -107,31 +101,116 @@ def popularity_filter(records, knows, unknowns):
     return records[:100]
 
 
-def find_item(lang, db, action_history):
+def find_item(lang, db, action_history, recommender):
     all_ids = [a.item_id for a in action_history]
     likes = [a.item_id for a in action_history if a.input_type <= 1]
     knows = [a.item_id for a in action_history if a.input_type <= 2]
     unknowns = [a.item_id for a in action_history if a.input_type == 3]
 
-    if len(likes):
-        positive_items = get_items(db, likes)
-    elif len(knows):
-        positive_items = get_items(db, knows)
-    else:
-        positive_items = get_popular_items(db, lang)
+    with Lap('calc pos'):
+        if len(likes):
+            positive_items = recommender.find_items(likes)
+        elif len(knows):
+            positive_items = recommender.find_items(knows)
+        else:
+            positive_items = get_popular_items(db, lang)
 
-    if len(unknowns):
-        negative_items = get_items(db, unknowns)
-    else:
-        negative_items = ItemList()
+    with Lap('calc nega'):
+        if len(unknowns):
+            negative_items = recommender.find_items(unknowns)
+        else:
+            negative_items = ItemList()
 
-    items = positive_items - negative_items
-    records = items.records_sorted_by_strength(db)
-    records = [r for r in records if r['item_id'] not in all_ids]
-    records = popularity_filter(records, knows, unknowns)
+    with Lap('calc post-process'):
+        items = positive_items - negative_items
+        records = items.records_sorted_by_strength(db)
+        records = [r for r in records if r['item_id'] not in all_ids]
+        records = popularity_filter(records, knows, unknowns)
 
-    index = rand(len(records))
     return records[rand(len(records))]
+
+
+class Recommender:
+    def __init__(self, db):
+        self.db = db
+
+    def load(self):
+        item_feature_mtx = RelationMatrix()
+        with Lap('set data'):
+            for r in self.db.selectAndFetchAll('''
+                    select item_id, feature_id, strength
+                    from feature_item'''):
+                item_feature_mtx.append(
+                    r['item_id'],
+                    r['feature_id'],
+                    r['strength'])
+
+            feature_feature_mtx = RelationMatrix(
+                src=item_feature_mtx.get_dst(),
+                dst=item_feature_mtx.get_dst())
+
+            for r in self.db.selectAndFetchAll('''
+                    select id_from, id_to, strength
+                    from feature_relation'''):
+                feature_feature_mtx.append(
+                    r['id_from'],
+                    r['id_to'],
+                    r['strength'])
+
+        with Lap('build item_feature'):
+            item_feature_mtx.build()
+
+        with Lap('build feature_item'):
+            feature_item_mtx = item_feature_mtx.create_inverse()
+
+        with Lap('build feature_feature'):
+            feature_feature_mtx.build()
+
+        #with Lap('build item_item_1'):
+        #    self.item_item_mtx = feature_feature_mtx * item_feature_mtx
+
+        #with Lap('build item_item_2'):
+        #    self.item_item_mtx = feature_item_mtx * self.item_item_mtx
+
+        self.item_feature_mtx = item_feature_mtx
+        self.feature_feature_mtx = feature_feature_mtx
+        self.feature_item_mtx = feature_item_mtx
+
+    def find_items(self, item_ids):
+        item_dict = {a: 1 for a in item_ids}
+        with Lap('item_feature'):
+            feature_dict = self.item_feature_mtx * item_dict
+        # print('---------')
+        # for record in [
+        #         self.db.selectOne('''
+        #         select f.feature_id, ip.* from feature f
+        #         inner join item_page ip on ip.item_id = f.item_id
+        #         where f.feature_id=%s
+        #         ''', args=(feature_id,))
+        #         for feature_id, strength in feature_dict.items()]:
+        #     print(record)
+        # feature_dict = self.feature_feature_mtx * feature_dict
+        # print('---------')
+        # for record in [
+        #         self.db.selectOne('''
+        #         select f.feature_id, ip.* from feature f
+        #         inner join item_page ip on ip.item_id = f.item_id
+        #         where f.feature_id=%s
+        #         ''', args=(feature_id,))
+        #         for feature_id, strength in feature_dict.items()]:
+        #     print(record)
+        with Lap('feature_item'):
+            item_dict = self.feature_item_mtx * feature_dict
+        # print('---------')
+        # for record in [
+        #         self.db.selectOne('''
+        #         select * from item_page
+        #         where item_id=%s
+        #         ''', args=(item_id,))
+        #         for item_id, strength in item_dict.items()]:
+        #     print(record)
+        # print('---------')
+        return ItemList({key: val for key, val in item_dict.items()})
 
 
 class Action:
@@ -154,12 +233,16 @@ class Client:
             self.seed = rand()
         random.seed(self.seed)
 
+        self.recommender = Recommender(self.db)
+        self.recommender.load()
+
         # self.db.updateQuery('''
         #     insert into session (seed, lang)
         #     values(%s, %s)
         # ''', args=(self.seed, self.lang))
         self.session_id = self.db.last_id()
-        self.next_item = find_item(self.lang, self.db, self.action_history)
+        self.next_item = find_item(
+            self.lang, self.db, self.action_history, self.recommender)
 
     def run(self):
         while 1:
@@ -188,12 +271,24 @@ class Client:
                 continue
             elif num == '1' or num == '2' or num == '3':
                 self.action_history.append(Action(num, self.next_item))
-                self.next_item = find_item(self.lang, self.db, self.action_history)
+                self.next_item = find_item(
+                    self.lang, self.db, self.action_history, self.recommender)
             else:
                 continue
 
 
 if __name__ == '__main__':
     c = Client('en')
-    c.init()
+    with Lap('init'):
+        c.init()
+
     c.run()
+
+    # db = MasterWikiDB('wikimaster')
+    # rec = Recommender(db)
+    # rec.load()
+    # while 1:
+    #     num = input('''>>>''')
+    #     num = int(num)
+    #     print(rec.find_items([num]))
+    #     continue
