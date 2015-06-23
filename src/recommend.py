@@ -39,6 +39,9 @@ class ItemList:
             ''', args=(item_id,)), self.id_to_val[item_id]) for item_id in ids]
         return rs
 
+    def items(self):
+        return self.id_to_val.items()
+
     def __add__(self, other):
         rt = ItemList()
         rt.id_to_val = self.id_to_val.copy()
@@ -93,25 +96,30 @@ def get_popular_items(db, lang):
 def find_item(lang, db, action_history, recommender):
     all_ids = [a.item_id for a in action_history]
     likes = [a.item_id for a in action_history if a.input_type <= 1]
+    like_items = ItemList({item_id: 1 for item_id in likes})
     knows = [a.item_id for a in action_history if a.input_type <= 2]
+    know_items = ItemList({item_id: 1 for item_id in knows})
     unknowns = [a.item_id for a in action_history if a.input_type == 3]
+    unknown_items = ItemList({item_id: 1 for item_id in unknowns})
 
-    with Lap('calc pos'):
-        if len(likes):
-            positive_items = recommender.find_items(likes)
-        elif len(knows):
-            positive_items = recommender.find_items(knows)
-        else:
-            positive_items = get_popular_items(db, lang)
+    items = ItemList()
 
-    with Lap('calc nega'):
+    if len(likes) == 0 and len(knows) == 0:
+        items += get_popular_items(db, lang)
         if len(unknowns):
-            negative_items = recommender.find_items(unknowns)
-        else:
-            negative_items = ItemList()
+            items -= recommender.find_items(unknown_items)
+    else:
+        if len(likes):
+            items += like_items
+        elif len(knows):
+            items += know_items
+
+        if len(unknowns):
+            items -= unknown_items
+
+        items = recommender.find_items(items)
 
     with Lap('calc post-process'):
-        items = positive_items - negative_items
         ids = items.ids_sorted_by_strength(db)
         ids = [i for i in ids if i not in all_ids]
 
@@ -168,8 +176,8 @@ class Recommender:
             self.feature_feature_mtx = feature_feature_mtx
         self.feature_item_mtx = feature_item_mtx
 
-    def find_items(self, item_ids):
-        item_dict = {a: 1 for a in item_ids}
+    def find_items(self, items):
+        item_dict = {item_id: strength for item_id, strength in items.items()}
         with Lap('item_feature'):
             feature_dict = self.item_feature_mtx * item_dict
         # print('---------')
