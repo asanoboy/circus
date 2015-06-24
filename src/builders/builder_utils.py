@@ -1,5 +1,36 @@
 from circus_itertools import lazy_chunked as chunked
 
+from contextlib import contextmanager
+from sqlalchemy.engine import create_engine
+from sqlalchemy.orm.session import sessionmaker
+from sqlalchemy.sql.expression import ClauseElement
+
+
+@contextmanager
+def wkdb_session(base, **kw):
+    engine = create_engine('sqlite://', **kw)
+    base.metadata.create_all(engine)
+    Session = sessionmaker(autocommit=True, autoflush=False)
+    Session.configure(bind=engine)
+    session = Session()
+    yield session
+    engine.dispose()
+
+
+def get_or_create(session, model, defaults=None, **kwargs):
+    instance = session.query(model).filter_by(**kwargs).first()
+    if instance:
+        return instance, False
+    else:
+        params = dict(
+            (k, v)
+            for k, v in kwargs.items()
+            if not isinstance(v, ClauseElement))
+        params.update(defaults or {})
+        instance = model(**params)
+        session.add(instance)
+    return instance, True
+
 
 def page_name_to_dict(wiki_db, name):
     name = '_'.join(name.split(' '))

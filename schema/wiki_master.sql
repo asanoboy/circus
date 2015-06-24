@@ -48,9 +48,12 @@ create table feature_type (
 create table feature (
     feature_id int not null auto_increment,
     feature_type_id int not null,
-    item_id int not null,
-    primary key(feature_id),
-    index feature_type_id(feature_type_id, item_id)
+
+    opt_item_id int null,
+    opt_year int null,
+    opt_popularity int null,
+
+    primary key(feature_id)
 );
 
 create table feature_item (

@@ -1,7 +1,6 @@
-import json
 from circus_itertools import lazy_chunked as chunked
-from .builder_utils import ItemPageRelationManager, Syncer, \
-    page_name_to_dict, find_links_from_wiki
+from .builder_utils import ItemPageRelationManager, Syncer
+from .feature.musical_artist import load as musical_artist_load
 
 
 class FeatureItemRelationManager:
@@ -12,13 +11,15 @@ class FeatureItemRelationManager:
             other_lang_dbs,
             feature_type_id,
             feature_type_name,
-            featured_page_generator,
-            search_feature_page_from_page):
+            load_features):
+            # featured_page_generator,
+            # search_feature_page_from_page):
         self.master_db = master_db
         self.lang_db = lang_db
         self.lang = lang_db.lang
-        self.page_generator = featured_page_generator
-        self.search = search_feature_page_from_page
+        # self.page_generator = featured_page_generator
+        # self.search = search_feature_page_from_page
+        self.load_features = load_features
         self.page_id_to_features = {}
         self.feature_type_id = feature_type_id
         self.feature_type_name = feature_type_name
@@ -29,8 +30,10 @@ class FeatureItemRelationManager:
             0)
 
     def _load(self):
-        for page in self.page_generator():
-            self.page_id_to_features[page['page_id']] = self.search(page)
+        self.page_id_to_features = self.load_features(
+            self.master_db, self.lang_db)
+        # for page in self.page_generator():
+        #     self.page_id_to_features[page['page_id']] = self.search(page)
 
     def _generate_feature_pages(self):
         pages = []
@@ -161,65 +164,16 @@ class FeatureItemRelationManager:
 
 class _MusicGenreBuilder:
     def __init__(self, master_db, lang_db, other_lang_dbs):
-        self.master_db = master_db
-        self.lang_db = lang_db
-        self.feature_type_id = 1
-        self.feature_type_name = 'Music Genre'
+        feature_type_id = 1
+        feature_type_name = 'Music Genre'
 
         self.fir_manager = FeatureItemRelationManager(
             master_db,
             lang_db,
             other_lang_dbs,
-            self.feature_type_id,
-            self.feature_type_name,
-            self.generate_featured_pages,
-            self.find_feature_from_page)
-
-        lang = lang_db.lang
-        if lang == 'en':
-            self.infotype = 'Infobox_musical_artist'
-            self.target_infotypes = ['Infobox_music_genre', None]
-            self.key = 'genre'
-        elif lang == 'ja':
-            self.infotype = 'Infobox_Musician'
-            self.target_infotypes = ['Infobox_Music_genre', None]
-            self.key = 'ジャンル'
-        else:
-            raise Exception('lang = %s is not supported.' % (lang,))
-
-        self._name_to_page = {}  # cache
-
-    def _page_name_to_dict(self, name):
-        if name in self._name_to_page:
-            return self._name_to_page[name]
-
-        page = page_name_to_dict(self.lang_db, name)
-        if page:
-            self._name_to_page[name] = page
-        return page
-
-    def generate_featured_pages(self):
-        return self.lang_db.generate_records(
-            'an_page', cols=['page_id', 'infocontent'],
-            cond='infotype = %s',
-            args=(self.infotype,))
-
-    def find_feature_from_page(self, page):
-        wiki_object = json.loads(page['infocontent'])
-        if self.key in wiki_object:
-            wiki_text = wiki_object[self.key]
-        elif self.key.capitalize() in wiki_object:
-            wiki_text = wiki_object[self.key.capitalize()]
-        else:
-            return []
-
-        names = find_links_from_wiki(wiki_text)
-        pages = [self._page_name_to_dict(name) for name in names]
-        pages = [p for p in pages if p is not None]
-        pages = filter(
-            lambda x: x['infotype'] in self.target_infotypes,
-            pages)
-        return list(pages)
+            feature_type_id,
+            feature_type_name,
+            musical_artist_load)
 
     def build(self):
         self.fir_manager.build()
