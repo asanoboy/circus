@@ -28,29 +28,46 @@ class Child(Base):
     name = Column(String)
 
 
+class Other(Base):
+    __tablename__ = 'other'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    parent_id = Column(Integer, ForeignKey('parent.id'))
+    parent = relationship('Parent', uselist=False)
+
+    child_id = Column(Integer, ForeignKey('child.id'))
+    child = relationship('Child', uselist=False)
+
+
 if __name__ == '__main__':
     with wkdb_session(Base) as session:
         print(' start ============')
-        parents = [Parent(name='parent_%s' % (str(i),)) for i in range(0, 10)]
-        children = [Child(name='child_%s' % (str(i),)) for i in range(0, 10)]
-        children2 = [Child(name='child_%s' % (str(i),)) for i in range(0, 10)]
 
-        print('start ============')
-        session.add_all(parents)
-        print('added parents ============')
-        session.add_all(children)
-        session.add_all(children2)
-        print('added children ============')
-        for i, parent in enumerate(parents):
-            if i <= 2:
-                continue
-            parent.children = [
-                c for j, c in enumerate(children)
-                if j > 2 and j % i == 0]
+        def dump():
+            print('============= DUMP >>')
+            parents = session.query(Parent).all()
+            for p in parents:
+                print(p.name)
+                for c in p.children:
+                    print('     =>', c.name)
+            print('<< ==================')
 
+        p = Parent(id=1, name='firstP')
+        c = Child(id=1, name='firstC')
+        p.children.append(c)
+        session.add(p)
+        session.add(c)
         session.flush()
-        print('deleted =================')
 
-        child = session.query(Child).filter(Child.name == 'child_6').first()
-        print(child.id, child.name)
-        print([p.name for p in child.parents])
+        dump()
+
+        p = Parent(id=2, name='secondP')
+        c = Child(id=2, name='secondC')
+        o = Other(id=1, name='secondO', parent=p, child=c)
+
+        session.add(p)
+        session.flush()
+
+        dump()
+

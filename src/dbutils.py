@@ -5,6 +5,22 @@ from models import Page, createPageInfoByBracketText
 from parser import getBracketTexts, removeComment
 from circus_itertools import lazy_chunked as chunked
 
+from contextlib import contextmanager
+from sqlalchemy.engine import create_engine
+from sqlalchemy.orm.session import sessionmaker
+
+
+@contextmanager
+def master_session(name, base, **kw):
+    engine = create_engine(
+        'mysql://root:@127.0.0.1/%s?charset=utf8' % (name,), **kw)
+    base.metadata.create_all(engine)
+    Session = sessionmaker(autocommit=True, autoflush=False)
+    Session.configure(bind=engine)
+    session = Session()
+    yield session
+    engine.dispose()
+
 
 class TableIndex:
     def __init__(self, name, isUnique):

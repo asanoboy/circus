@@ -9,6 +9,15 @@ create table an_page (
     index infotype(infotype)
 );
 
+create table an_infobox (
+    page_id INT NOT NULL,
+    infotype VARCHAR(255) NOT NULL,
+    key_lower VARCHAR(255) NOT NULL,
+    page_id_to INT NOT NULL,
+    index page_id(page_id),
+    index infotype(infotype, page_id_to)
+);
+
 create table an_info(
     text_id INT NOT NULL PRIMARY KEY,
     name varchar(255) NOT NULL,

@@ -1,5 +1,6 @@
 import argparse
-from dbutils import MasterWikiDB, WikiDB
+from dbutils import MasterWikiDB, WikiDB, master_session
+from model.master import Base
 # from numerical import *
 from debug import Lap
 from builders.pagelinks_filtered import PagelinksFilteredBuilder
@@ -14,6 +15,7 @@ from builders.item_feature_builder import ItemFeatureBuilder
 from builders.popularity_calc import PopularityCalc
 from builders.feature_relation_builder import FeatureRelationBuilder
 from builders.strength_calc import StrengthCalc
+from builders.infobox import Builder as InfoboxBuilder
 
 
 class BuilderHolder:
@@ -39,27 +41,30 @@ if __name__ == '__main__':
     langs = args['langs'].split(',')
     imported_langs = ['en', 'ja']
 
-    master_db = MasterWikiDB('wikimaster')
+    # master_db = MasterWikiDB('wikimaster')
     lang_to_db = { l: WikiDB(l) for l in imported_langs }
-    for lang in langs:
-        wiki_db = lang_to_db[lang]
-        other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
+    with master_session('master', Base) as session:
 
-        holder = BuilderHolder(lang)
-        #holder.push(InfoBuilder(wiki_db))
-        #holder.push(PageBuilder(wiki_db))
-        #holder.push(CategoryBuilder(wiki_db))
-        #holder.push(PagelinksBuilder(wiki_db))
-        #holder.push(PagelinksFilteredBuilder(wiki_db))
-        #holder.push(PagelinksFeaturedBuilder(wiki_db))
+        for lang in langs:
+            wiki_db = lang_to_db[lang]
+            other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
 
-        # holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-        holder.push(FeatureBuilder(master_db, wiki_db, other_dbs))
+            holder = BuilderHolder(lang)
+            #holder.push(InfoBuilder(wiki_db))
+            #holder.push(InfoboxBuilder(wiki_db))
+            #holder.push(PageBuilder(wiki_db))
+            #holder.push(CategoryBuilder(wiki_db))
+            #holder.push(PagelinksBuilder(wiki_db))
+            #holder.push(PagelinksFilteredBuilder(wiki_db))
+            #holder.push(PagelinksFeaturedBuilder(wiki_db))
+
+            # holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
+            holder.push(FeatureBuilder(session, wiki_db, other_dbs))
+            holder.build()
+
+        holder = BuilderHolder('master')
+        #holder.push(PopularityCalc(master_db, lang_to_db.values()))
+        #holder.push(ItemFeatureBuilder(master_db))
+        #holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
+        #holder.push(StrengthCalc(master_db))
         holder.build()
-
-    holder = BuilderHolder('master')
-    #holder.push(PopularityCalc(master_db, lang_to_db.values()))
-    #holder.push(ItemFeatureBuilder(master_db))
-    #holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
-    #holder.push(StrengthCalc(master_db))
-    holder.build()

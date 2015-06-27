@@ -17,6 +17,31 @@ def wkdb_session(base, **kw):
     engine.dispose()
 
 
+class IdMap:
+    def __init__(self, cls):
+        self.id_map = {}
+        self.cls = cls
+
+    def has(self, id):
+        return id in self.id_map
+
+    def set(self, id, obj):
+        if self.has(id):
+            raise Exception('Invalid id', id)
+        self.id_map[id] = obj
+
+    def get_or_create(self, id, **kw):
+        if id not in self.id_map:
+            self.id_map[id] = self.cls(**kw)
+            # print(
+            #     'Created: %s, id=%s' %
+            #     (self.id_map[id].__class__.__name__, id))
+        return self.id_map[id]
+
+    def values(self):
+        return self.id_map.values()
+
+
 def get_or_create(session, model, defaults=None, **kwargs):
     instance = session.query(model).filter_by(**kwargs).first()
     if instance:
@@ -33,6 +58,8 @@ def get_or_create(session, model, defaults=None, **kwargs):
 
 
 def page_name_to_dict(wiki_db, name):
+    if len(name) == 0:
+        return None
     name = '_'.join(name.split(' '))
     page = wiki_db.selectOne('''
         select
@@ -67,6 +94,17 @@ def page_name_to_dict(wiki_db, name):
         # print('Found redirect from', name, 'to', redirect['name'])
         page = page_name_to_dict(wiki_db, redirect['name'])
     return page
+
+
+class PageNameResolver:
+    def __init__(self, wiki_db):
+        self.db = wiki_db
+        self._name_to_dict = {}
+
+    def get_dict(self, name):
+        if name not in self._name_to_dict:
+            self._name_to_dict[name] = page_name_to_dict(self.db, name)
+        return self._name_to_dict[name]
 
 
 class PageFactory:
