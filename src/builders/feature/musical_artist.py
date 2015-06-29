@@ -1,5 +1,6 @@
 import json
 import re
+from contextlib import contextmanager
 from model.master import Base, Page, Feature, Item
 from ..builder_utils import find_links_from_wiki, PageNameResolver, IdMap
 from sqlalchemy import Table, Column, Integer, ForeignKey
@@ -8,8 +9,8 @@ from sqlalchemy.orm import relationship
 
 album_to_genre_table = Table(
     'wk_album_to_genre', Base.metadata,
-    Column('left_id', Integer, ForeignKey('wk_album.id')),
-    Column('right_id', Integer, ForeignKey('item.id'))
+    Column('album_id', Integer, ForeignKey('wk_album.id')),
+    Column('item_id', Integer, ForeignKey('item.id'))
     )
 
 
@@ -71,15 +72,21 @@ class Loader:
             self.genre_infotype = 'Infobox_music_genre'
             self.album_infotype = 'Infobox_album'
             self.key = 'genre'
+            self.valid_musician_infotypes = [self.infotype, 'Infobox_person']
         elif lang == 'ja':
             self.infotype = 'Infobox_Musician'
             self.target_infotypes = ['Infobox_Music_genre', None]
             self.genre_infotype = 'Infobox_Music_genre'
             self.album_infotype = 'Infobox_Album'
             self.key = 'ジャンル'
+            self.valid_musician_infotypes = [self.infotype, 'Infobox_人物']
         else:
             raise Exception('lang = %s is not supported.' % (lang,))
         self.album_infobox_type_key = 'type'
+        '''
+        Sometimes soundtracks include genres out of main ones of the artist.
+        Ex. Tron:_Legacy_Reconfigured by DaftPunk.
+        '''
         self.album_infobox_invalid_types = ['Soundtrack']
         self.album_infobox_genre = 'genre'
         self.album_infobox_artist = 'artist'
@@ -105,18 +112,42 @@ class Loader:
         self.load_musicians()
         self.load_album()
         self.load_genre_year()
-        # self.delete_album()
 
     def load_album(self):
         year_prog = re.compile('[\d]{4}')
+        type_summary = {}
 
         for r in self.lang_db.generate_records(
                 'an_page',
                 cols=['page_id', 'infocontent', 'name'],
                 cond='infotype = %s',
                 args=(self.album_infotype,)):
-            # album = Album(page_id=r['page_id'])
-            album = Album(page=Page(id=r['page_id']))
+
+            released_text = find_wiki_text(
+                r['infocontent'], self.album_infobox_released)
+            if released_text is None:
+                print('Invalid released "%s"' % (r['name'],))
+                continue
+            match = year_prog.search(released_text)
+            if not match:
+                print(
+                    'Invalid released "%s" : %s' %
+                    (r['name'], released_text))
+                continue
+            year = int(match.group(0))
+            if year < 1900 or 2999 < year:
+                print(
+                    'Invalid year "%s" : %s' %
+                    (r['name'], released_text))
+                continue
+
+            album_type = find_wiki_text(
+                r['infocontent'], self.album_infobox_type_key)
+            if album_type not in type_summary:
+                type_summary[album_type] = 0
+            type_summary[album_type] += 1
+            if album_type and album_type in self.album_infobox_invalid_types:
+                continue  # TODO
 
             artists = self.lang_db.selectAndFetchAll('''
                 select i.page_id_to from an_infobox i
@@ -138,7 +169,8 @@ class Loader:
                     lang='ja' and page_id=2260174,
                 these records have an irregular artist.
             '''
-            if musician_record['infotype'] in [None, self.genre_infotype]:
+            if musician_record['infotype'] not in \
+                    self.valid_musician_infotypes:
                 print(
                     'Invalid musician: ', musician_record)
                 continue
@@ -158,34 +190,16 @@ class Loader:
             genres = []
             for page_id in [r['page_id'] for r in genre_records]:
                 genres.append(self.get_or_create_genre(page_id))
+
+            album = Album(page=Page(page_id=r['page_id']))
             album.genres = genres
-
-            album_type = find_wiki_text(
-                r['infocontent'], self.album_infobox_type_key)
-            if album_type and album_type in self.album_infobox_invalid_types:
-                continue  # TODO
-
-            released_text = find_wiki_text(
-                r['infocontent'], self.album_infobox_released)
-            if released_text is None:
-                print('Invalid released "%s"' % (r['name'],))
-                continue
-            match = year_prog.search(released_text)
-            if not match:
-                print(
-                    'Invalid released "%s" : %s' %
-                    (r['name'], released_text))
-                continue
-            year = int(match.group(0))
-            if year < 1900 or 2999 < year:
-                print(
-                    'Invalid year "%s" : %s' %
-                    (r['name'], released_text))
-                continue
             album.year = year
-
             album.musician = musician
             self.albums.append(album)
+
+        print('==Album type summary')
+        for album_type, num in type_summary.items():
+            print(album_type, num)
 
     def load_genre_year(self):
         for album in self.albums:
@@ -210,29 +224,24 @@ class Loader:
 
             self.get_or_create_musician(r['page_id'])
 
-    def delete_album(self):
-        for album in self.albums:
-            album.genres = []
-            album.musician = None
-            album.page = None
-            del album
-
     def result(self):
         return self.musician_map.values()
-        # items = []
-        # feature_map = IdMap(Feature)
-        # for musician in self.musician_map.values():
-        #     item = Item(page=musician.page)
-        #     for genre_year in musician.genre_years:
-        #         feature = feature_map.get_or_create(
-        #             genre_year.id,
-        #             ref_item=Item(page=genre_year.genre.page))
-        #         item.features.append(feature)
-        #     items.append(item)
-        # return items
+
+    def finish(self, session):
+        for album in self.albums:
+            album.page.load_from_wikidb(self.lang_db)
+
+            for genre in album.genres:
+                for p in genre.pages:
+                    p.load_from_wikidb(self.lang_db)
+
+        session.add_all(self.albums)
+        session.flush()
 
 
-def load(lang_db, get_or_create_item_by_page_id):
+@contextmanager
+def load(session, lang_db, get_or_create_item_by_page_id):
     loader = Loader(lang_db, get_or_create_item_by_page_id)
     loader.load()
-    return loader.result()
+    yield loader.result()
+    loader.finish(session)

@@ -53,8 +53,9 @@ class Item(Base):
 class Page(Base):
     __tablename__ = 'page'
 
-    id = Column(Integer, primary_key=True)
-    lang = Column(String(10), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    page_id = Column(Integer)
+    lang = Column(String(10))
     name = Column(String(256))
 
     item_id = Column(Integer, ForeignKey('item.id'))
@@ -62,6 +63,30 @@ class Page(Base):
 
     popularity = Column(Float, nullable=False, default=0)
     viewcount = Column(Integer, nullable=False)
+
+    def load_from_wikidb(self, lang_db):
+        if self.name is not None and \
+                self.lang is not None and \
+                self.viewcount is not None:
+            return
+        if self.page_id is None:
+            raise Exception('Can\'t load without page_id')
+        if self.lang is None:
+            self.lang = lang_db.lang
+        elif self.lang != lang_db.lang:
+            raise Exception('Can\'t load from another db')
+
+        rt = lang_db.selectOne('''
+            select p.name, pc.count
+            from an_page p
+            left join an_pagecount pc on pc.page_id = p.page_id
+                and pc.year = 2014
+            where p.page_id = %s
+            ''', args=(self.page_id,))
+        if rt is None:
+            raise Exception('Can\'t load with page_id=%s.' % (self.page_id,))
+        self.name = rt['name']
+        self.viewcount = rt['count'] if rt['count'] is not None else 0
 
 
 class Feature(Base):

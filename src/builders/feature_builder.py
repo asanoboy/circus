@@ -36,11 +36,11 @@ class FeatureItemRelationManager:
             item = self._find_item(page_id, page_record['name'])
             if item:
                 self.item_map.set(page_id, item)
-                item.pages.append(Page(id=page_id, lang=self.lang))
+                item.pages.append(Page(page_id=page_id, lang=self.lang))
                 return item
 
             item = self.item_map.get_or_create(page_id)
-            item.pages.append(Page(id=page_id, lang=self.lang))
+            item.pages.append(Page(page_id=page_id, lang=self.lang))
             return item
 
     def _find_item(self, page_id, page_name):
@@ -70,7 +70,7 @@ class FeatureItemRelationManager:
                     is_equal_as_pagename(foreign_rs[0]['name'], page_name):
                 page = self.master.query(Page) \
                     .filter(
-                        Page.id == foreign_page.id,
+                        Page.page_id == foreign_page.id,
                         Page.lang == lang).first()
                 if page:
                     return page.item
@@ -82,54 +82,47 @@ class FeatureItemRelationManager:
         return None
 
     def _load(self):
-        items = self.load_features(self.lang_db, self.get_or_create_by_page_id)
+        with self.load_features(
+                self.master,
+                self.lang_db,
+                self.get_or_create_by_page_id) as items:
+            pages = []
+            features = []
+            for item in items:
+                pages.extend([p for p in item.pages if p.lang == self.lang])
+                item.visible = 1
+                features.extend(item.features)
+                for f in item.features:
+                    pages.extend([
+                        p for p in f.ref_item.pages if p.lang == self.lang])
+                    f.ref_item.visible = 0
 
-        pages = []
-        features = []
-        for item in items:
-            pages.extend([p for p in item.pages if p.lang == self.lang])
-            item.visible = 1
-            features.extend(item.features)
-            for f in item.features:
-                pages.extend([
-                    p for p in f.ref_item.pages if p.lang == self.lang])
-                f.ref_item.visible = 0
+            pages = list(set(pages))
+            for p in pages:
+                p.load_from_wikidb(self.lang_db)
+                if p.lang is None:
+                    raise Exception('Invalid page_id: %s' % (p.page_id,))
 
-        pages = list(set(pages))
-        for page in pages:
-            if page.name is None:
-                rt = self.lang_db.selectOne('''
-                    select name from an_page
-                    where page_id = %s
-                    ''', args=(page.id,))
-                page.name = rt['name']
-            if page.viewcount is None:
-                rt = self.lang_db.selectOne('''
-                    select count from an_pagecount
-                    where page_id = %s and year = 2014
-                    ''', args=(page.id,))
-                page.viewcount = rt['count'] if rt else 0
+                # print('fuga', p.name, p.page_id, p.viewcount, p)
 
-            if page.lang is None:
-                raise Exception('Invalid page_id: %s' % (page.id,))
+            # print('============')
+            # for item in items:
+            #     for p in item.pages:
+            #         if p.lang == self.lang:
+            #             item_page = p
+            #     print(item, len(item.pages))
+            #     for f in item.features:
+            #         for p in f.ref_item.pages:
+            #             print(
+            #                 '''
+            #                 item_page_id: %s, feature_page_id: %s, year: %s
+            #                 ''' % (item_page.id, p.id, f.year))
 
-        # print('============')
-        # for item in items:
-        #     for p in item.pages:
-        #         if p.lang == self.lang:
-        #             item_page = p
-        #     print(item, len(item.pages))
-        #     for f in item.features:
-        #         for p in f.ref_item.pages:
-        #             print(
-        #                 'item_page_id: %s, feature_page_id: %s, year: %s' %
-        #                 (item_page.id, p.id, f.year))
+            self.master.add_all(pages)
+            self.master.flush()
 
-        self.master.add_all(pages)
-        self.master.flush()
-
-        self.master.add_all(items)
-        self.master.flush()
+            self.master.add_all(items)
+            self.master.flush()
 
     def _find_feature_id(self, item_id):
         rs = self.master_db.selectAndFetchAll('''
