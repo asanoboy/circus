@@ -1,5 +1,4 @@
 from .builder_utils import IdMap, is_equal_as_pagename
-# from .feature.feature_utils import Item, Feature, Page
 from model.master import Item, Page
 from .feature.musical_artist import load as musical_artist_load
 
@@ -13,23 +12,15 @@ class FeatureItemRelationManager:
             feature_type_id,
             feature_type_name,
             load_features):
-            # featured_page_generator,
-            # search_feature_page_from_page):
         self.master = master
         self.lang_db = lang_db
         self.lang = lang_db.lang
-        # self.page_generator = featured_page_generator
-        # self.search = search_feature_page_from_page
         self.load_features = load_features
         self.feature_type_id = feature_type_id
         self.feature_type_name = feature_type_name
         self.lang_to_other_lang_db = {db.lang: db for db in other_lang_dbs}
 
         self.item_map = IdMap(Item)
-        # self.ipr_manager = ItemPageRelationManager(
-        #     master_db, lang_db,
-        #     other_lang_dbs,
-        #     0)
 
     def get_or_create_by_page_id(self, page_id):
         if self.item_map.has(page_id):
@@ -112,9 +103,15 @@ class FeatureItemRelationManager:
                     where page_id = %s
                     ''', args=(page.id,))
                 page.name = rt['name']
+            if page.viewcount is None:
+                rt = self.lang_db.selectOne('''
+                    select count from an_pagecount
+                    where page_id = %s and year = 2014
+                    ''', args=(page.id,))
+                page.viewcount = rt['count'] if rt else 0
+
             if page.lang is None:
                 raise Exception('Invalid page_id: %s' % (page.id,))
-            print('lang', page.id, page.lang)
 
         # print('============')
         # for item in items:
@@ -156,7 +153,7 @@ class FeatureItemRelationManager:
         self._load()
 
 
-class _MusicGenreBuilder:
+class FeatureBuilder:
     def __init__(self, master, lang_db, other_lang_dbs):
         feature_type_id = 1
         feature_type_name = 'Music Genre'
@@ -171,14 +168,3 @@ class _MusicGenreBuilder:
 
     def build(self):
         self.fir_manager.build()
-
-
-class FeatureBuilder:
-    def __init__(self, master, lang_db, other_lang_dbs):
-        self.builders = [
-            _MusicGenreBuilder(master, lang_db, other_lang_dbs),
-        ]
-
-    def build(self):
-        for builder in self.builders:
-            builder.build()

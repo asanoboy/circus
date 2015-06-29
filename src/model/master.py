@@ -60,8 +60,8 @@ class Page(Base):
     item_id = Column(Integer, ForeignKey('item.id'))
     item = relationship('Item', uselist=False, backref='pages')
 
-    popularity = Column(Float)
-    viewcount = Column(Integer)
+    popularity = Column(Float, nullable=False, default=0)
+    viewcount = Column(Integer, nullable=False)
 
 
 class Feature(Base):

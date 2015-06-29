@@ -6,50 +6,11 @@ from sqlalchemy import Table, Column, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 
 
-# musician_to_genre_year_table = Table(
-#     'musician_to_genre_year', Base.metadata,
-#     Column('left_id', Integer, ForeignKey('musician.id')),
-#     Column('right_id', Integer, ForeignKey('genre_year.id'))
-#     )
-
 album_to_genre_table = Table(
     'wk_album_to_genre', Base.metadata,
     Column('left_id', Integer, ForeignKey('wk_album.id')),
     Column('right_id', Integer, ForeignKey('item.id'))
     )
-
-
-# class Musician(Base):
-#     __tablename__ = 'wk_musician'
-# 
-#     id = Column(Integer, primary_key=True, autoincrement=True)
-#     page_id = Column(Integer, ForeignKey('page.id'))
-#     page = relationship('Page', uselist=False)
-#     genre_years = relationship(
-#         'GenreYear',
-#         secondary=musician_to_genre_year_table)
-
-
-# class Genre(Base):
-#     __tablename__ = 'wk_genre'
-# 
-#     id = Column(Integer, primary_key=True, autoincrement=True)
-#     page_id = Column(Integer, ForeignKey('page.id'))
-#     page = relationship('Page', uselist=False)
-
-
-# class GenreYear(Base):
-#     __tablename__ = 'wk_genre_year'
-#     __table_args__ = (
-#         (UniqueConstraint(
-#             'year', 'genre_id', name='unique_idx_year_genre_id')),
-#         )
-# 
-#     id = Column(Integer, primary_key=True, autoincrement=True)  # not use
-#     year = Column(Integer)
-#     genre_id = Column(Integer, ForeignKey('wk_genre.id'))
-#     genre = relationship(
-#         'Genre', uselist=False)
 
 
 GenreYear = Feature
@@ -109,21 +70,20 @@ class Loader:
             self.target_infotypes = ['Infobox_music_genre', None]
             self.genre_infotype = 'Infobox_music_genre'
             self.album_infotype = 'Infobox_album'
-            self.album_infobox_genre = 'genre'
-            self.album_infobox_artist = 'artist'
-            self.album_infobox_released = 'released'
             self.key = 'genre'
         elif lang == 'ja':
             self.infotype = 'Infobox_Musician'
             self.target_infotypes = ['Infobox_Music_genre', None]
             self.genre_infotype = 'Infobox_Music_genre'
             self.album_infotype = 'Infobox_Album'
-            self.album_infobox_genre = 'genre'
-            self.album_infobox_artist = 'artist'
-            self.album_infobox_released = 'released'
             self.key = 'ジャンル'
         else:
             raise Exception('lang = %s is not supported.' % (lang,))
+        self.album_infobox_type_key = 'type'
+        self.album_infobox_invalid_types = ['Soundtrack']
+        self.album_infobox_genre = 'genre'
+        self.album_infobox_artist = 'artist'
+        self.album_infobox_released = 'released'
 
     def get_or_create_musician(self, page_id):
         if self.musician_map.has(page_id):
@@ -134,11 +94,6 @@ class Loader:
         return item
 
     def get_or_create_genre(self, page_id):
-        # if page_id == 47774:
-        #     genre = self.get_or_create_item_by_page_id(page_id)
-        #     print(genre, genre.pages[0].id, genre.pages[0].name, genre.pages[0].lang)
-        #     raise('aaa')
-        #     return genre
         return self.get_or_create_item_by_page_id(page_id)
 
     def get_or_create_genre_year(self, genre, year):
@@ -147,7 +102,7 @@ class Loader:
             key, ref_item=genre, year=year)
 
     def load(self):
-        # self.load_musicians()
+        self.load_musicians()
         self.load_album()
         self.load_genre_year()
         # self.delete_album()
@@ -169,13 +124,11 @@ class Loader:
                 ''', args=(r['page_id'], self.album_infobox_artist))
 
             if len(artists) != 1:
-                print(
-                    'Musician is invalid "%s, %s"' %
-                    (r['name'], r['page_id']))
+                print('Musician numbser is invalid ', artists)
                 continue
 
             musician_record = self.lang_db.selectOne('''
-                select infotype from an_page
+                select infotype, page_id from an_page
                 where page_id=%s
                 ''', args=(artists[0]['page_id_to'],))
 
@@ -207,6 +160,11 @@ class Loader:
                 genres.append(self.get_or_create_genre(page_id))
             album.genres = genres
 
+            album_type = find_wiki_text(
+                r['infocontent'], self.album_infobox_type_key)
+            if album_type and album_type in self.album_infobox_invalid_types:
+                continue  # TODO
+
             released_text = find_wiki_text(
                 r['infocontent'], self.album_infobox_released)
             if released_text is None:
@@ -236,10 +194,12 @@ class Loader:
                 genre_year = self.get_or_create_genre_year(
                     genre, album.year)
                 features.append(genre_year)
-            exists_keys = [(f.ref_item.id, f.year) for f in album.musician.features]
+            exists_keys = [
+                (f.ref_item.id, f.year) for f in album.musician.features]
             features = list(set(features))
-            album.musician.features.extend(
-                [f for f in features if (f.ref_item.id, f.year) not in exists_keys])
+            album.musician.features.extend([
+                f for f in features
+                if (f.ref_item.id, f.year) not in exists_keys])
 
     def load_musicians(self):
         for r in self.lang_db.generate_records(

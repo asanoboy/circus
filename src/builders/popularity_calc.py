@@ -1,3 +1,5 @@
+from model.master import Page
+
 
 def generate_popularity():
     popularity = 1000
@@ -12,64 +14,29 @@ def generate_popularity():
 
 
 class PopularityCalc:
-    def __init__(self, master_db, lang_dbs):
-        self.db = master_db
+    def __init__(self, master, lang_dbs):
+        self.master = master
         self.lang_to_db = {d.lang: d for d in lang_dbs}
 
     def build(self):
-        self.db.updateQuery('''
-            update item_page
-            set popularity = 0, viewcount = 0
-        ''')
+        pages = self.master.query(Page)
+        pages = sorted(pages, key=lambda p: -p.viewcount)
 
-        record_to_count = {}
-        for record in self.db.generate_records(
-                'item_page', ['lang', 'page_id'],
-                order='lang asc, page_id asc'):
-            record_to_count[(record['lang'], record['page_id'])] = \
-                self._calc_viewcount(record['lang'], record['page_id'])
-
-        records = record_to_count.keys()
-        records = sorted(records, key=lambda x: -record_to_count[x])
-        record_to_popularity = {}
         current_popularity = None
         last_count = None
-        for record, popularity in zip(records, generate_popularity()):
-            count = record_to_count[record]
+        for page, popularity in zip(pages, generate_popularity()):
+            count = page.viewcount
             if last_count != count:
                 current_popularity = popularity
 
-            record_to_popularity[record] = current_popularity
             last_count = count
+            page.popularity = current_popularity
 
-        min_pop = current_popularity
-        max_pop = generate_popularity().__next__()
-        for record in record_to_popularity.keys():
-            pop = record_to_popularity[record]
-            record_to_popularity[record] = \
+        min_pop = pages[-1].popularity
+        max_pop = pages[0].popularity
+        for page in pages:
+            pop = page.popularity
+            page.popularity = \
                 ((pop - min_pop) / (max_pop - min_pop)) * 100
 
-        for record, count in record_to_count.items():
-            lang = record[0]
-            page_id = record[1]
-            popularity = record_to_popularity[record]
-            self.db.updateQuery('''
-                update item_page
-                set popularity = %s, viewcount = %s
-                where lang = %s and page_id = %s
-            ''', args=(popularity, count, lang, page_id))
-        self.db.commit()
-
-    def _calc_viewcount(self, lang, page_id):
-        db = self.lang_to_db[lang]
-        rs = db.selectAndFetchAll('''
-            select count from an_pagecount
-            where page_id = %s
-        ''', args=(page_id,))
-        if len(rs) == 0:
-            return 0
-        elif len(rs) == 1:
-            return rs[0]['count']
-        else:
-            rs = sorted(rs, key=lambda x: -x['count'])
-            return rs[1]['count']
+        self.master.flush()
