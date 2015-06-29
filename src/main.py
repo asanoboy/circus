@@ -13,7 +13,7 @@ from builders.itemtag_builder import ItemTagBuilder
 from builders.feature_builder import FeatureBuilder
 from builders.item_feature_builder import ItemFeatureBuilder
 from builders.popularity_calc import PopularityCalc
-from builders.feature_relation_builder import FeatureRelationBuilder
+from builders.feature_relation_builder2 import FeatureRelationBuilder
 from builders.strength_calc import StrengthCalc
 from builders.infobox import Builder as InfoboxBuilder
 
@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
         holder = BuilderHolder('master')
         # holder.push(PopularityCalc(session, lang_to_db.values()))
-        holder.push(ItemFeatureBuilder(session))
-        #holder.push(FeatureRelationBuilder(master_db, lang_to_db.values()))
+        # holder.push(ItemFeatureBuilder(session))
+        holder.push(FeatureRelationBuilder(session))
         #holder.push(StrengthCalc(master_db))
         holder.build()
