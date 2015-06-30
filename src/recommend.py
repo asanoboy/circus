@@ -1,7 +1,9 @@
 import random
 import time
-from dbutils import MasterWikiDB
-from numerical import RelationMatrix
+import json
+from model.master import Base, Page, Item, FeatureItemAssoc
+from http_utils import post
+from dbutils import master_session
 from debug import Lap
 
 
@@ -22,22 +24,10 @@ class ItemList:
 
         self.id_to_val[item_id] = val
 
-    def ids_sorted_by_strength(self, db):
+    def ids_sorted_by_strength(self):
         ids = [r[0] for r in sorted(
             self.id_to_val.items(), key=lambda x: -x[1])]
         return ids
-
-    def records_for_debug(self, db):
-        ids = [r[0] for r in sorted(
-            self.id_to_val.items(), key=lambda x: -x[1])]
-        rs = [(db.selectOne(
-            '''
-            select
-                ip.item_id, ip.name, ip.popularity
-            from item_page ip
-            where ip.item_id=%s
-            ''', args=(item_id,)), self.id_to_val[item_id]) for item_id in ids]
-        return rs
 
     def items(self):
         return self.id_to_val.items()
@@ -70,30 +60,17 @@ class ItemList:
         return rt
 
 
-def find_features(db, item_id):
-    return db.selectAndFetchAll('''
-        select fi.feature_id, ip.*
-        from feature_item fi
-        inner join feature f on f.feature_id = fi.feature_id
-        inner join item_page ip on ip.item_id = f.item_id
-        where fi.item_id = %s
-        ''', args=(item_id,))
+def get_popular_items(session, lang):
+    pages = session.query(Page). \
+        join(Page.item). \
+        filter(Page.lang == lang). \
+        filter(Item.visible == 1). \
+        order_by(Page.popularity.desc()). \
+        limit(100)
+    return ItemList({p.item_id: 0 for p in pages})
 
 
-def get_popular_items(db, lang):
-    rs = db.selectAndFetchAll('''
-        select
-            i.item_id
-        from item_page ip
-        inner join item i on i.item_id = ip.item_id and i.visible = 1
-        where ip.lang = %s
-        order by ip.popularity desc
-        limit %s
-    ''', args=(lang, 100))
-    return ItemList({r['item_id']: 0 for r in rs})
-
-
-def find_item(lang, db, action_history, recommender):
+def find_item(lang, session, action_history, recommender):
     all_ids = [a.item_id for a in action_history]
     likes = [a.item_id for a in action_history if a.input_type <= 1]
     like_items = ItemList({item_id: 1 for item_id in likes})
@@ -105,7 +82,7 @@ def find_item(lang, db, action_history, recommender):
     items = ItemList()
 
     if len(likes) == 0 and len(knows) == 0:
-        items += get_popular_items(db, lang)
+        items += get_popular_items(session, lang)
         if len(unknowns):
             items -= recommender.find_items(unknown_items)
     else:
@@ -120,112 +97,63 @@ def find_item(lang, db, action_history, recommender):
         items = recommender.find_items(items)
 
     with Lap('calc post-process'):
-        ids = items.ids_sorted_by_strength(db)
+        ids = items.ids_sorted_by_strength()
         ids = [i for i in ids if i not in all_ids]
 
     item_id = ids[rand(len(ids))]
-    return db.selectOne('''
-        select * from item_page
-        where item_id = %s and lang = %s
-        ''', args=(item_id, lang))
+    return session.query(Page).filter(
+        # Page.item_id == item_id, Page.lang == lang).fisrt()
+        Page.item_id == item_id).first()
 
 
 use_ff = False
 
 
 class Recommender:
-    def __init__(self, db):
-        self.db = db
+    urlbase = 'http://localhost:8000'
 
-    def load(self):
-        item_feature_mtx = RelationMatrix()
-        with Lap('set data'):
-            for r in self.db.selectAndFetchAll('''
-                    select item_id, feature_id, strength
-                    from feature_item'''):
-                item_feature_mtx.append(
-                    r['item_id'],
-                    r['feature_id'],
-                    r['strength'])
+    def post(self, path, idmap):
+        rt = post(
+            self.urlbase + path, {'idmap': json.dumps(idmap)})
+        if rt.status == 200:
+            data = json.loads(rt.read().decode('utf-8'))
+            return {int(key): float(val) for key, val in data.items()}
 
-            if use_ff:
-                feature_feature_mtx = RelationMatrix(
-                    src=item_feature_mtx.get_dst(),
-                    dst=item_feature_mtx.get_dst())
+    def feature_to_item(self, idmap):
+        return self.post('/feature_to_item', idmap)
 
-                for r in self.db.selectAndFetchAll('''
-                        select id_from, id_to, strength
-                        from feature_relation'''):
-                    feature_feature_mtx.append(
-                        r['id_from'],
-                        r['id_to'],
-                        r['strength'])
+    def feature_to_feature(self, idmap):
+        return self.post('/feature_to_feature', idmap)
 
-        with Lap('build item_feature'):
-            item_feature_mtx.build()
-
-        with Lap('build feature_item'):
-            feature_item_mtx = item_feature_mtx.create_inverse()
-
-        if use_ff:
-            with Lap('build feature_feature'):
-                feature_feature_mtx.build()
-
-        self.item_feature_mtx = item_feature_mtx
-        if use_ff:
-            self.feature_feature_mtx = feature_feature_mtx
-        self.feature_item_mtx = feature_item_mtx
+    def item_to_feature(self, idmap):
+        return self.post('/item_to_feature', idmap)
 
     def find_items(self, items):
         item_dict = {item_id: strength for item_id, strength in items.items()}
         with Lap('item_feature'):
             feature_dict = self.item_feature_mtx * item_dict
-        # print('---------')
-        # for record in [
-        #         self.db.selectOne('''
-        #         select f.feature_id, ip.* from feature f
-        #         inner join item_page ip on ip.item_id = f.item_id
-        #         where f.feature_id=%s
-        #         ''', args=(feature_id,))
-        #         for feature_id, strength in feature_dict.items()]:
-        #     print(record)
+
         if use_ff:
             feature_dict = self.feature_feature_mtx * feature_dict
-        # print('---------')
-        # for record in [
-        #         self.db.selectOne('''
-        #         select f.feature_id, ip.* from feature f
-        #         inner join item_page ip on ip.item_id = f.item_id
-        #         where f.feature_id=%s
-        #         ''', args=(feature_id,))
-        #         for feature_id, strength in feature_dict.items()]:
-        #     print(record)
+
         with Lap('feature_item'):
             item_dict = self.feature_item_mtx * feature_dict
-        # print('---------')
-        # for record in [
-        #         self.db.selectOne('''
-        #         select * from item_page
-        #         where item_id=%s
-        #         ''', args=(item_id,))
-        #         for item_id, strength in item_dict.items()]:
-        #     print(record)
-        # print('---------')
+
         return ItemList({key: val for key, val in item_dict.items()})
 
 
 class Action:
-    def __init__(self, input_type, record):
-        self.item_id = record['item_id']
+    def __init__(self, input_type, page):
+        self.item_id = page.item_id
         self.input_type = int(input_type)
-        self.record = record
+        self.page = page
 
 
 class Client:
-    def __init__(self, lang, seed=None):
+    def __init__(self, session, lang, seed=None):
+        self.session = session
         self.lang = lang
         self.seed = seed
-        self.db = MasterWikiDB('wikimaster')
         self.action_history = []
 
     def init(self):
@@ -234,16 +162,14 @@ class Client:
             self.seed = rand()
         random.seed(self.seed)
 
-        self.recommender = Recommender(self.db)
-        self.recommender.load()
+        self.recommender = Recommender()
 
         # self.db.updateQuery('''
         #     insert into session (seed, lang)
         #     values(%s, %s)
         # ''', args=(self.seed, self.lang))
-        self.session_id = self.db.last_id()
-        self.next_item = find_item(
-            self.lang, self.db, self.action_history, self.recommender)
+        self.next_page = find_item(
+            self.lang, self.session, self.action_history, self.recommender)
 
     def run(self):
         while 1:
@@ -252,38 +178,42 @@ class Client:
 2: Just know it
 3: Don't know it
 > ''' % (
-                self.next_item['name'],
-                self.next_item['popularity'],
-                self.next_item['item_id']))
+                self.next_page.name,
+                self.next_page.popularity,
+                self.next_page.item_id))
 
             if num == 'q':
                 break
             elif num == 'f':
-                features = find_features(self.db, self.next_item['item_id'])
-                for f in features:
-                    print(f)
+                assocs = self.session.query(FeatureItemAssoc).filter(
+                    FeatureItemAssoc.item_id == self.next_page.item_id)
+                for assoc in assocs:
+                    f = assocs.feature
+                    print(f.ref_item.page.name, f.year)
                 continue
             elif num == 'i':
-                pages = self.db.selectAndFetchAll('''
-                    select * from item_page where item_id = %s
-                    ''', args=(self.next_item['item_id'],))
-                for p in pages:
-                    print(p)
+                # pages = self.db.selectAndFetchAll('''
+                #     select * from item_page where item_id = %s
+                #     ''', args=(self.next_item['item_id'],))
+                # for p in pages:
+                #     print(p)
                 continue
             elif num == '1' or num == '2' or num == '3':
-                self.action_history.append(Action(num, self.next_item))
-                self.next_item = find_item(
-                    self.lang, self.db, self.action_history, self.recommender)
+                self.action_history.append(Action(num, self.next_page))
+                self.next_page = find_item(
+                    self.lang, self.session,
+                    self.action_history, self.recommender)
             else:
                 continue
 
 
 if __name__ == '__main__':
-    c = Client('en')
-    with Lap('init'):
-        c.init()
+    with master_session('master', Base) as session:
+        c = Client(session, 'en')
+        with Lap('init'):
+            c.init()
 
-    c.run()
+        c.run()
 
     # db = MasterWikiDB('wikimaster')
     # rec = Recommender(db)

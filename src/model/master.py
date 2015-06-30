@@ -24,7 +24,10 @@ class FeatureItemAssoc(Base):
     __tablename__ = 'feature_item'
 
     feature_id = Column(Integer, ForeignKey('feature.id'), primary_key=True)
+    feature = relationship('Feature', uselist=False)
+
     item_id = Column(Integer, ForeignKey('item.id'), primary_key=True)
+    item = relationship('Item', uselist=False)
     strength = Column(Float)
     # TODO index
 
