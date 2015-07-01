@@ -15,22 +15,26 @@ def parse_idmap(data_dict):
     logger = get_logger(__name__)
     if 'idmap' not in data_dict:
         logger.debug('"idmap" was not found')
-        return False, None
+        return False, None, None
+
+    if 'lang' not in data_dict:
+        logger.debug('"lang" was not found')
+        return False, None, None
 
     idmap_str = data_dict['idmap'][0]
     if not isinstance(idmap_str, str):
         logger.debug('"idmap" was not a str: %s' % (type(idmap_str)))
-        return False, None
+        return False, None, None
 
     logger.debug(idmap_str)
     idmap = json.loads(idmap_str)
 
     if not isinstance(idmap, dict):
         logger.debug('"idmap" was not a dict in json')
-        return False, None
+        return False, None, None
     idmap = {int(key): float(val) for key, val in idmap.items()}
 
-    return True, idmap
+    return True, idmap, data_dict['lang'][0]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -56,23 +60,26 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def feature_to_item(self, data_dict):
-        ok, idmap = parse_idmap(data_dict)
-        if ok:
-            return SUCCESS, self.server.calc.get_features_by_items(idmap)
+        ok, idmap, lang = parse_idmap(data_dict)
+        if ok and lang in self.server.lang_calc:
+            return SUCCESS, \
+                self.server.lang_calc[lang].get_items_by_features(idmap)
         else:
             return ERROR, None
 
     def feature_to_feature(self, data_dict):
-        ok, idmap = parse_idmap(data_dict)
-        if ok:
-            return SUCCESS, self.server.calc.get_features_by_features(idmap)
+        ok, idmap, lang = parse_idmap(data_dict)
+        if ok and lang in self.server.lang_calc:
+            return SUCCESS, \
+                self.server.lang_calc[lang].get_features_by_features(idmap)
         else:
             return ERROR, None
 
     def item_to_feature(self, data_dict):
-        ok, idmap = parse_idmap(data_dict)
-        if ok:
-            return SUCCESS, self.server.calc.get_items_by_features(idmap)
+        ok, idmap, lang = parse_idmap(data_dict)
+        if ok and lang in self.server.lang_calc:
+            return SUCCESS, \
+                self.server.lang_calc[lang].get_features_by_items(idmap)
         else:
             return ERROR, None
 
@@ -89,16 +96,20 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Server(HTTPServer):
-    def set_calculator(self, calc):
-        self.calc = calc
+    def set_lang_calculator(self, lang_calc):
+        self.lang_calc = lang_calc
 
 
 def run():
     address = ('', 8000)
     httpd = Server(address, Handler)
+    langs = ['en', 'ja']
+    lang_calc = {}
     with master_session('master', Base) as session:
-        calc = Calculator()
-        calc.load(session)
+        for lang in langs:
+            calc = Calculator(lang)
+            calc.load(session)
+            lang_calc[lang] = calc
 
-    httpd.set_calculator(calc)
+    httpd.set_lang_calculator(lang_calc)
     httpd.serve_forever()

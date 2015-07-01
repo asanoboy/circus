@@ -1,20 +1,24 @@
 from numerical import RelationMatrix
 from debug import get_logger
-from model.master import FeatureItemAssoc, FeatureRelationAssoc
+from model.master import FeatureItemAssoc, FeatureRelationAssoc, Item, Page
 
 
 use_ff = True
 
 
 class Calculator:
-    def __init__(self):
+    def __init__(self, lang):
         self.logger = get_logger(__name__)
+        self.lang = lang
 
     def load(self, session):
         item_feature_mtx = RelationMatrix()
         lap = self.logger.lap
         with lap('set data'):
-            for fi in session.query(FeatureItemAssoc):
+            for fi in session.query(FeatureItemAssoc). \
+                    join(Item). \
+                    join(Page). \
+                    filter(Page.lang == self.lang):
                 item_feature_mtx.append(
                     fi.item_id,
                     fi.feature_id,

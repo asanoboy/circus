@@ -48,7 +48,7 @@ class Logger:
 def Lap(tag, logger=None):
     global level
     start = time.time()
-    log = '%s>> %s' % ('  ' * level, tag)
+    log = '%s>> [%s]' % ('  ' * level, tag)
     if logger:
         logger.debug(log)
     else:
@@ -59,7 +59,7 @@ def Lap(tag, logger=None):
 
     level -= 1
     interval = time.time() - start
-    log = '%s<< %s | elapsed time = %d' % \
+    log = '%s<< [%s] | elapsed time = %d' % \
         ('  ' * level, tag, interval)
 
     if logger:

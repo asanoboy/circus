@@ -1,10 +1,14 @@
+import argparse
 import random
 import time
 import json
 from model.master import Base, Page, Item, FeatureItemAssoc
 from http_utils import post
 from dbutils import master_session
-from debug import Lap
+from debug import get_logger, set_config
+
+
+logger = None
 
 
 def rand(maxim=1000):
@@ -60,84 +64,46 @@ class ItemList:
         return rt
 
 
-def get_popular_items(session, lang):
-    pages = session.query(Page). \
-        join(Page.item). \
-        filter(Page.lang == lang). \
-        filter(Item.visible == 1). \
-        order_by(Page.popularity.desc()). \
-        limit(100)
-    return ItemList({p.item_id: 0 for p in pages})
-
-
-def find_item(lang, session, action_history, recommender):
-    all_ids = [a.item_id for a in action_history]
-    likes = [a.item_id for a in action_history if a.input_type <= 1]
-    like_items = ItemList({item_id: 1 for item_id in likes})
-    knows = [a.item_id for a in action_history if a.input_type <= 2]
-    know_items = ItemList({item_id: 1 for item_id in knows})
-    unknowns = [a.item_id for a in action_history if a.input_type == 3]
-    unknown_items = ItemList({item_id: 1 for item_id in unknowns})
-
-    items = ItemList()
-
-    if len(likes) == 0 and len(knows) == 0:
-        items += get_popular_items(session, lang)
-        if len(unknowns):
-            items -= recommender.find_items(unknown_items)
-    else:
-        if len(likes):
-            items += like_items
-        elif len(knows):
-            items += know_items
-
-        if len(unknowns):
-            items -= unknown_items
-
-        items = recommender.find_items(items)
-
-    with Lap('calc post-process'):
-        ids = items.ids_sorted_by_strength()
-        ids = [i for i in ids if i not in all_ids]
-
-    item_id = ids[rand(len(ids))]
-    return session.query(Page).filter(
-        # Page.item_id == item_id, Page.lang == lang).fisrt()
-        Page.item_id == item_id).first()
-
-
-use_ff = False
-
-
 class Recommender:
     urlbase = 'http://localhost:8000'
 
+    def __init__(self, lang):
+        self.lang = lang
+
     def post(self, path, idmap):
         rt = post(
-            self.urlbase + path, {'idmap': json.dumps(idmap)})
+            self.urlbase + path,
+            {'idmap': json.dumps(idmap), 'lang': self.lang})
         if rt.status == 200:
             data = json.loads(rt.read().decode('utf-8'))
             return {int(key): float(val) for key, val in data.items()}
 
     def feature_to_item(self, idmap):
-        return self.post('/feature_to_item', idmap)
+        with logger.lap('feature_to_item'):
+            rt = self.post('/feature_to_item', idmap)
+            logger.debug('item_feature_num: %s' % (len(rt),))
+            return rt
 
     def feature_to_feature(self, idmap):
-        return self.post('/feature_to_feature', idmap)
+        with logger.lap('feature_to_feature'):
+            rt = self.post('/feature_to_feature', idmap)
+            logger.debug('feature_to_feature: %s' % (len(rt),))
+            return rt
 
     def item_to_feature(self, idmap):
-        return self.post('/item_to_feature', idmap)
+        with logger.lap('item_to_feature'):
+            rt = self.post('/item_to_feature', idmap)
+            logger.debug('item_to_feature: %s' % (len(rt),))
+            return rt
 
     def find_items(self, items):
         item_dict = {item_id: strength for item_id, strength in items.items()}
-        with Lap('item_feature'):
-            feature_dict = self.item_feature_mtx * item_dict
+        logger.debug('================')
+        logger.debug('orig_num: %s' % (len(item_dict),))
 
-        if use_ff:
-            feature_dict = self.feature_feature_mtx * feature_dict
-
-        with Lap('feature_item'):
-            item_dict = self.feature_item_mtx * feature_dict
+        feature_dict = self.item_to_feature(item_dict)
+        feature_dict = self.feature_to_feature(feature_dict)
+        item_dict = self.feature_to_item(feature_dict)
 
         return ItemList({key: val for key, val in item_dict.items()})
 
@@ -149,12 +115,21 @@ class Action:
         self.page = page
 
 
+class Result:
+    def __init__(self, likes, knows, unknowns):
+        self.likes = likes
+        self.knows = knows
+        self.unknowns = unknowns
+
+
 class Client:
     def __init__(self, session, lang, seed=None):
         self.session = session
         self.lang = lang
         self.seed = seed
         self.action_history = []
+        self.result_history = []
+        self.curr = 0
 
     def init(self):
         random.seed(time.time())
@@ -162,64 +137,139 @@ class Client:
             self.seed = rand()
         random.seed(self.seed)
 
-        self.recommender = Recommender()
-
-        # self.db.updateQuery('''
-        #     insert into session (seed, lang)
-        #     values(%s, %s)
-        # ''', args=(self.seed, self.lang))
-        self.next_page = find_item(
-            self.lang, self.session, self.action_history, self.recommender)
+        self.recommender = Recommender(self.lang)
+        self.result_history.append(self.find_next())
 
     def run(self):
         while 1:
-            num = input('''>>> %s (popularity: %s, item_id: %s)
+            next_page = self.result_history[self.curr].page
+            num = input('''(%s) >>> %s (popularity: %s, item_id: %s)
 1: Like it
 2: Just know it
 3: Don't know it
 > ''' % (
-                self.next_page.name,
-                self.next_page.popularity,
-                self.next_page.item_id))
+                self.curr,
+                next_page.name,
+                next_page.popularity,
+                next_page.item_id))
 
             if num == 'q':
                 break
-            elif num == 'f':
+            if num == 'u':  # undo
+                if self.curr == 0:
+                    print('[Error] Can\'t undo!')
+                else:
+                    self.curr -= 1
+                continue
+            if num == 'r':  # redo
+                if self.curr == len(self.result_history)-1:
+                    print('[Error] Can\'t redo!')
+                else:
+                    self.curr += 1
+                continue
+            elif num == 'f':  # show feature
                 assocs = self.session.query(FeatureItemAssoc).filter(
-                    FeatureItemAssoc.item_id == self.next_page.item_id)
+                    FeatureItemAssoc.item_id == next_page.item_id)
                 for assoc in assocs:
-                    f = assocs.feature
-                    print(f.ref_item.page.name, f.year)
+                    f = assoc.feature
+                    for p in [
+                            p for p in f.ref_item.pages
+                            if p.lang == self.lang]:
+                        print(p.name, f.year, assoc.strength)
+                continue
+            elif num == 'p':  # show popular pages
+                for item_id, dummy in self.get_popular_items().items():
+                    item = self.session.query(Item).filter(
+                        Item.id == item_id).first()
+                    for p in item.pages:
+                        if p.lang == self.lang:
+                            print(p.name, p.popularity)
                 continue
             elif num == 'i':
                 # pages = self.db.selectAndFetchAll('''
                 #     select * from item_page where item_id = %s
-                #     ''', args=(self.next_item['item_id'],))
+                #     ''', args=(self.next_page['item_id'],))
                 # for p in pages:
                 #     print(p)
                 continue
-            elif num == '1' or num == '2' or num == '3':
-                self.action_history.append(Action(num, self.next_page))
-                self.next_page = find_item(
-                    self.lang, self.session,
-                    self.action_history, self.recommender)
+            elif num == '1' or num == '2' or num == '3':  # select
+                self.curr += 1
+                self.action_history = self.action_history[:self.curr-1]
+                self.result_history = self.result_history[:self.curr]
+
+                self.action_history.append(Action(num, next_page))
+                self.result_history.append(self.find_next())
             else:
                 continue
 
+    def get_popular_items(self):
+        if not hasattr(self, '_popular_items'):
+            pages = self.session.query(Page). \
+                join(Page.item). \
+                filter(Page.lang == self.lang). \
+                filter(Item.visible == 1). \
+                order_by(Page.popularity.desc()). \
+                limit(100)
+            return ItemList({p.item_id: 0 for p in pages})
+        return self._popular_items
+
+    def find_next(self):
+        all_ids = [
+            a.item_id for a in self.action_history]
+        likes = [
+            a.item_id for a in self.action_history if a.input_type <= 1]
+        knows = [
+            a.item_id for a in self.action_history if a.input_type <= 2]
+        unknowns = [
+            a.item_id for a in self.action_history if a.input_type == 3]
+
+        like_items = ItemList({item_id: 1 for item_id in likes})
+        know_items = ItemList({item_id: 1 for item_id in knows})
+        unknown_items = ItemList({item_id: 1 for item_id in unknowns})
+
+        result = Result(likes, knows, unknowns)
+
+        items = ItemList()
+        if len(likes) == 0 and len(knows) == 0:
+            items += self.get_popular_items()
+            if len(unknowns):
+                items -= self.recommender.find_items(unknown_items)
+        else:
+            if len(likes):
+                items += like_items
+            elif len(knows):
+                items += know_items
+
+            if len(unknowns):
+                items -= unknown_items
+
+            items = self.recommender.find_items(items)
+
+        with logger.lap('calc post-process'):
+            ids = items.ids_sorted_by_strength()
+            ids = [i for i in ids if i not in all_ids]
+
+        item_id = ids[rand(len(ids))]
+        page = self.session.query(Page).filter(
+            Page.item_id == item_id, Page.lang == lang).first()
+
+        result.page = page
+        result.items = items
+        return result
+
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-l', '--lang')  # ja,en
+    args = parser.parse_args()
+    args = vars(args)
+    lang = args['lang']
+
+    set_config('/home/anauser/log/circus/recommend.log')
+    logger = get_logger(__name__)
     with master_session('master', Base) as session:
-        c = Client(session, 'en')
-        with Lap('init'):
+        c = Client(session, lang)
+        with logger.lap('init'):
             c.init()
 
         c.run()
-
-    # db = MasterWikiDB('wikimaster')
-    # rec = Recommender(db)
-    # rec.load()
-    # while 1:
-    #     num = input('''>>>''')
-    #     num = int(num)
-    #     print(rec.find_items([num]))
-    #     continue
