@@ -72,6 +72,8 @@ class Loader:
             self.genre_infotype = 'Infobox_music_genre'
             self.album_infotype = 'Infobox_album'
             self.key = 'genre'
+            self.musician_infobox_genre_key = 'genre'
+            self.musician_infobox_genre_key2 = ''
             self.valid_musician_infotypes = [self.infotype, 'Infobox_person']
         elif lang == 'ja':
             self.infotype = 'Infobox_Musician'
@@ -79,6 +81,8 @@ class Loader:
             self.genre_infotype = 'Infobox_Music_genre'
             self.album_infotype = 'Infobox_Album'
             self.key = 'ジャンル'
+            self.musician_infobox_genre_key = 'ジャンル'
+            self.musician_infobox_genre_key2 = 'genre'
             self.valid_musician_infotypes = [self.infotype, 'Infobox_人物']
         else:
             raise Exception('lang = %s is not supported.' % (lang,))
@@ -191,6 +195,28 @@ class Loader:
             for page_id in [r['page_id'] for r in genre_records]:
                 genres.append(self.get_or_create_genre(page_id))
 
+            if len(genres) == 0:
+                '''
+                If album has no genres, refer to its musician's genres.
+                '''
+                musician_page = [
+                    p for p in musician.pages
+                    if p.lang == self.lang_db.lang][0]
+
+                genre_records = self.lang_db.selectAndFetchAll('''
+                    select i.page_id_to page_id from an_infobox i
+                    inner join an_page p on p.page_id = i.page_id_to
+                    where i.page_id = %s
+                        and (i.key_lower = %s or i.key_lower = %s)
+                        and (p.infotype IS NULL or p.infotype = %s)
+                    ''', args=(
+                        musician_page.page_id,
+                        self.musician_infobox_genre_key,
+                        self.musician_infobox_genre_key2,
+                        self.genre_infotype))
+                for page_id in [r['page_id'] for r in genre_records]:
+                    genres.append(self.get_or_create_genre(page_id))
+
             album = Album(page=Page(page_id=r['page_id']))
             album.genres = genres
             album.year = year
@@ -208,6 +234,7 @@ class Loader:
                 genre_year = self.get_or_create_genre_year(
                     genre, album.year)
                 features.append(genre_year)
+            ''' Avoid to add duplicated features '''
             exists_keys = [
                 (f.ref_item.id, f.year) for f in album.musician.features]
             features = list(set(features))
