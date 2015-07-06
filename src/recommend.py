@@ -2,10 +2,12 @@ import argparse
 import random
 import time
 import json
+from statistics import median
 from model.master import Base, Page, Item, FeatureItemAssoc
 from http_utils import post
 from dbutils import master_session
 from debug import get_logger, set_config
+from logging import WARNING
 
 
 logger = None
@@ -204,13 +206,44 @@ class Client:
 
     def get_popular_items(self):
         if not hasattr(self, '_popular_items'):
-            pages = self.session.query(Page). \
+            all_pages = self.session.query(Page). \
                 join(Page.item). \
                 filter(Page.lang == self.lang). \
-                filter(Item.visible == 1). \
-                order_by(Page.popularity.desc()). \
-                limit(100)
-            return ItemList({p.item_id: 0 for p in pages})
+                filter(Item.visible == 1)
+            # item_id_to_page = {p.item.id: p for p in all_pages}
+            item_id_to_strength = {p.item.id: p.popularity for p in all_pages}
+            all_pages = sorted(all_pages, key=lambda p: -item_id_to_strength[p.item.id])
+
+            pages = []
+            pages.append(all_pages[rand(10)])
+            all_pages = [p for p in all_pages if p not in pages]
+            while len(pages) < 100:
+                assoc_items = self.recommender.find_items(
+                    {pages[-1].item.id: 1})
+                if len(assoc_items.items()) == 0:
+                    page = pages.pop()
+                    continue
+
+                print('++', pages[-1].name, pages[-1].popularity, pages[-1].id)
+                for f in pages[-1].item.features:
+                    for p in f.ref_item.pages:
+                        print('  -*-  ',  f.year, p.lang, p.name)
+                for i, p in enumerate(all_pages[:10]):
+                    print(i, p.name, item_id_to_strength[p.item.id])
+
+
+                for id, st in assoc_items.items():
+                    item_id_to_strength[id] *= 0.9
+
+                # all_pages = [
+                #     p for p in all_pages
+                #     if p.item.id not in high_assoc_item_ids]
+                all_pages = sorted(all_pages, key=lambda p: -item_id_to_strength[p.item.id])
+                page = all_pages[rand(10)]
+                pages.append(page)
+                all_pages = [p for p in all_pages if p != page]
+
+            self._popular_items = ItemList({p.item_id: 0 for p in pages})
         return self._popular_items
 
     def find_next(self):
@@ -265,7 +298,7 @@ if __name__ == '__main__':
     args = vars(args)
     lang = args['lang']
 
-    set_config('/home/anauser/log/circus/recommend.log')
+    set_config('/home/anauser/log/circus/recommend.log', WARNING)
     logger = get_logger(__name__)
     with master_session('master', Base) as session:
         c = Client(session, lang)
