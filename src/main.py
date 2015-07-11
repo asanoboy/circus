@@ -1,5 +1,6 @@
 import argparse
-from dbutils import MasterWikiDB, WikiDB, master_session
+from config import dbhost, user
+from dbutils import MasterWikiDB, WikiDB, open_session
 from model.master import Base
 # from numerical import *
 from debug import Lap
@@ -43,7 +44,7 @@ if __name__ == '__main__':
 
     # master_db = MasterWikiDB('wikimaster')
     lang_to_db = { l: WikiDB(l) for l in imported_langs }
-    with master_session('master', Base, truncate=True) as session:
+    with open_session(dbhost, user, 'master', Base, truncate=True) as session:
         for lang in langs:
             wiki_db = lang_to_db[lang]
             other_dbs = [db for db in lang_to_db.values() if db.lang != lang]

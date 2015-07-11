@@ -11,9 +11,14 @@ from sqlalchemy.orm.session import sessionmaker
 
 
 @contextmanager
-def master_session(name, base, truncate=False, **kw):
+def master_session(name, base, **kw):
+    return open_session('127.0.0.1', 'root', name, base, **kw)
+
+
+@contextmanager
+def open_session(hostname, user, name, base, **kw):
     engine = create_engine(
-        'mysql://root:@127.0.0.1/%s?charset=utf8' % (name,), **kw)
+        'mysql://%s:@%s/%s?charset=utf8' % (user, hostname, name,), **kw)
     if truncate:
         with closing(engine.connect()) as con:
             trans = con.begin()
@@ -22,13 +27,6 @@ def master_session(name, base, truncate=False, **kw):
                 if engine.dialect.has_table(con, str(table)):
                     con.execute(table.delete())
             trans.commit()
-
-    base.metadata.create_all(engine)
-    Session = sessionmaker(autocommit=True, autoflush=False)
-    Session.configure(bind=engine)
-    session = Session()
-    yield session
-    engine.dispose()
 
 
 class TableIndex:

@@ -1,0 +1,2 @@
+dbhost = 'maindows'
+user = 'root'
