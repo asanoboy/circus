@@ -84,6 +84,7 @@ class Page(Base):
 
     popularity = Column(Float, nullable=False, default=0)
     viewcount = Column(Integer, nullable=False)
+    linknum = Column(Integer, nullable=False)
 
     def load_from_wikidb(self, lang_db):
         if self.name is not None and \
@@ -108,6 +109,12 @@ class Page(Base):
             raise Exception('Can\'t load with page_id=%s.' % (self.page_id,))
         self.name = rt['name']
         self.viewcount = rt['count'] if rt['count'] is not None else 0
+
+        rt = lang_db.selectOne('''
+            select count(*) linknum from an_pagelinks
+            where id_to = %s
+            ''', args=(self.page_id,))
+        self.linknum = rt['linknum']
 
 
 class Feature(Base):
