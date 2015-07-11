@@ -43,8 +43,7 @@ if __name__ == '__main__':
 
     # master_db = MasterWikiDB('wikimaster')
     lang_to_db = { l: WikiDB(l) for l in imported_langs }
-    with master_session('master', Base) as session:
-
+    with master_session('master', Base, truncate=True) as session:
         for lang in langs:
             wiki_db = lang_to_db[lang]
             other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
@@ -58,13 +57,13 @@ if __name__ == '__main__':
             #holder.push(PagelinksFilteredBuilder(wiki_db))
             #holder.push(PagelinksFeaturedBuilder(wiki_db))
 
-            # holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-            # holder.push(FeatureBuilder(session, wiki_db, other_dbs))
+            ## holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
+            holder.push(FeatureBuilder(session, wiki_db, other_dbs))
             holder.build()
 
         holder = BuilderHolder('master')
-        # holder.push(PopularityCalc(session, lang_to_db.values()))
+        ## holder.push(PopularityCalc(session, lang_to_db.values()))
         # holder.push(ItemFeatureBuilder(session))
-        holder.push(FeatureRelationBuilder(session))
-        #holder.push(StrengthCalc(master_db))
+        # holder.push(FeatureRelationBuilder(session))
+        #h older.push(StrengthCalc(master_db))
         holder.build()

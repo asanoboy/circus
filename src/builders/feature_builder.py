@@ -1,5 +1,5 @@
 from .builder_utils import IdMap, is_equal_as_pagename
-from model.master import Item, Page
+from model.master import Item, Page, Tag
 from .feature.musical_artist import load as musical_artist_load
 
 
@@ -9,15 +9,15 @@ class FeatureItemRelationManager:
             master,
             lang_db,
             other_lang_dbs,
-            feature_type_id,
-            feature_type_name,
+            tag_id,
+            tag_name,
             load_features):
         self.master = master
         self.lang_db = lang_db
         self.lang = lang_db.lang
         self.load_features = load_features
-        self.feature_type_id = feature_type_id
-        self.feature_type_name = feature_type_name
+        self.tag_id = tag_id
+        self.tag_name = tag_name
         self.lang_to_other_lang_db = {db.lang: db for db in other_lang_dbs}
 
         self.item_map = IdMap(Item)
@@ -118,29 +118,19 @@ class FeatureItemRelationManager:
             #                 item_page_id: %s, feature_page_id: %s, year: %s
             #                 ''' % (item_page.id, p.id, f.year))
 
+            tag = self.master.query(Tag).filter(Tag.id == self.tag_id).first()
+            if not tag:
+                tag = Tag(id=self.tag_id, name=self.tag_name)
+
+            for item in items:
+                if self.tag_id not in [t.id for t in item.tags]:
+                    item.tags.append(tag)
+
             self.master.add_all(pages)
             self.master.flush()
 
             self.master.add_all(items)
             self.master.flush()
-
-    def _find_feature_id(self, item_id):
-        rs = self.master_db.selectAndFetchAll('''
-            select feature_id from feature
-            where feature_type_id = %s and opt_item_id = %s
-        ''', args=(self.feature_type_id, item_id))
-        if len(rs) == 1:
-            return rs[0]['feature_id']
-        raise 'Not found feature_id'
-
-    def _find_item_id(self, page_id):
-        rs = self.master_db.selectAndFetchAll('''
-            select item_id from item_page
-            where page_id = %s and lang = %s
-        ''', args=(page_id, self.lang))
-        if len(rs) == 1:
-            return rs[0]['item_id']
-        raise Exception('Not found item_id from page_id=%s' % (page_id,))
 
     def build(self):
         self._load()
@@ -148,15 +138,15 @@ class FeatureItemRelationManager:
 
 class FeatureBuilder:
     def __init__(self, master, lang_db, other_lang_dbs):
-        feature_type_id = 1
-        feature_type_name = 'Music Genre'
+        tag_id = 1
+        tag_name = 'Music Genre'
 
         self.fir_manager = FeatureItemRelationManager(
             master,
             lang_db,
             other_lang_dbs,
-            feature_type_id,
-            feature_type_name,
+            tag_id,
+            tag_name,
             musical_artist_load)
 
     def build(self):

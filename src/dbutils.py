@@ -5,15 +5,24 @@ from models import Page, createPageInfoByBracketText
 from parser import getBracketTexts, removeComment
 from circus_itertools import lazy_chunked as chunked
 
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm.session import sessionmaker
 
 
 @contextmanager
-def master_session(name, base, **kw):
+def master_session(name, base, truncate=False, **kw):
     engine = create_engine(
         'mysql://root:@127.0.0.1/%s?charset=utf8' % (name,), **kw)
+    if truncate:
+        with closing(engine.connect()) as con:
+            trans = con.begin()
+            for table in reversed(base.metadata.sorted_tables):
+                print(table)
+                if engine.dialect.has_table(con, str(table)):
+                    con.execute(table.delete())
+            trans.commit()
+
     base.metadata.create_all(engine)
     Session = sessionmaker(autocommit=True, autoflush=False)
     Session.configure(bind=engine)
@@ -119,22 +128,12 @@ class TupleUseResultCursor(
     pass
 
 
-def selectGenerator(
-        openConn, table, cols=[], joins=[], cond='',
-        order='', arg=set(), dict_format=False):
+def selectGeneratorFromSql(openConn, sql, arg=set(), dict_format=False):
     conn = openConn()
     cur_class = DictUseResultCursor if dict_format else TupleUseResultCursor
     cur = conn.cursor(cursorclass=cur_class)
     cur.execute('set net_read_timeout = 99999')
     cur.execute('set net_write_timeout = 99999')
-
-    sql = """
-        select %s from %s %s
-        """ % (','.join(cols), table, ' '.join(joins))
-    if cond:
-        sql += " where %s " % (cond,)
-    if order:
-        sql += " order by %s " % (order,)
 
     print(sql, arg)
     cur.execute(sqlStr(sql), arg)
@@ -159,6 +158,21 @@ def selectGenerator(
 
     cur.close()
     conn.close()
+
+
+def selectGenerator(
+        openConn, table, cols=[], joins=[], cond='',
+        order='', arg=set(), dict_format=False):
+
+    sql = """
+        select %s from %s %s
+        """ % (','.join(cols), table, ' '.join(joins))
+    if cond:
+        sql += " where %s " % (cond,)
+    if order:
+        sql += " order by %s " % (order,)
+
+    return selectGeneratorFromSql(openConn, sql, arg, dict_format)
 
 
 def decode_if_binary(x):
@@ -232,6 +246,9 @@ class BaseDB:
         return selectGenerator(
             self.openConn, table, cols, joins, cond,
             order, args, dict_format)
+
+    def generate_records_from_sql(self, sql, arg=set()):
+        return selectGeneratorFromSql(self.openConn, sql, arg, True)
 
     def selectOne(self, query, args=set(), decode=True):
         rs = self.selectAndFetchAll(query, args=args, decode=decode)

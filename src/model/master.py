@@ -19,6 +19,12 @@ feature_relation_table = Table(
     Column('id_to', Integer, ForeignKey('feature.id'), primary_key=True)
     )
 
+tag_item_table = Table(
+    'tag_item_table', Base.metadata,
+    Column('tag_id', Integer, ForeignKey('tag.id'), primary_key=True),
+    Column('item_id', Integer, ForeignKey('item.id'), primary_key=True)
+    )
+
 
 class FeatureItemAssoc(Base):
     __tablename__ = 'feature_item'
@@ -39,6 +45,18 @@ class FeatureRelationAssoc(Base):
     id_to = Column(Integer, ForeignKey('feature.id'), primary_key=True)
     strength = Column(Float)
     # TODO index
+
+
+class Tag(Base):
+    __tablename__ = 'tag'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(64))
+
+    items = relationship(
+        'Item',
+        secondary=tag_item_table,
+        backref='tags')
 
 
 class Item(Base):
