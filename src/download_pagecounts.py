@@ -1,6 +1,11 @@
-import re, argparse, os, gzip, urllib
+import re
+import argparse
+import os
+import gzip
+import urllib
 import http.client
-from dbutils import *
+from config import user, dbhost
+from dbutils import WikiDB
 from circus_itertools import lazy_chunked as chunked
 from fileutils import save_content
 
@@ -21,23 +26,18 @@ def get_content(path):
 
     return data
 
-#def has_content(year, month, dump_dir, file_name):
-#    dest_dir = os.path.join(dump_dir, str(year), '%02d' % (month,))
-#    dest_file = os.path.join(dest_dir, file_name)
-#    exists = os.path.exists(dest_file)
-#    if exists:
-#        print('already exists: %s' % (dest_file,))
-#    return exists
 
 years = range(2007, 2015 + 1)
 months = range(1, 12 + 1)
+
 
 def pagecount_gz_generator(interval=1):
     p = re.compile('<a href="(pagecounts-[\d]+-[\d]+\.gz)">')
     cnt = 0
     for year in years:
         for month in months:
-            index_page = '/other/pagecounts-raw/%s/%s-%02d/' % (year, year, month)
+            index_page = '/other/pagecounts-raw/%s/%s-%02d/' % \
+                (year, year, month)
             data = get_content(index_page)
             if data is None:
                 continue
@@ -50,9 +50,13 @@ def pagecount_gz_generator(interval=1):
                 file_name = m.group(1)
                 if cnt % interval == 0:
                     path = index_page + file_name
-                    yield {'year':year, 'path':path, 'gz':get_content(path)}
+                    yield {
+                        'year': year,
+                        'path': path,
+                        'gz': get_content(path)}
                 cnt += 1
                 data = data[m.end():]
+
 
 def record_generator(langs, content_iter):
     for data in content_iter:
@@ -76,15 +80,22 @@ def record_generator(langs, content_iter):
             if project in langs:
                 if len(name) > 255:
                     continue
-                yield {'lang': project, 'year': year, 'name': name, 'count': count, 'path': data['path'], 'line': line}
+                yield {
+                    'lang': project,
+                    'year': year,
+                    'name': name,
+                    'count': count,
+                    'path': data['path'],
+                    'line': line}
+
 
 def insert_pagecount(langs, record_iter):
     lang_to_db = {}
     for lang in langs:
-        lang_to_db[lang] = WikiDB(lang)
+        lang_to_db[lang] = WikiDB(lang, user, dbhost)
 
     for records in chunked(record_iter, 100):
-        lang_to_records = { lang:[] for lang in langs }
+        lang_to_records = {lang: [] for lang in langs}
         for record in records:
             lang_to_records[record['lang']].append(record)
 
@@ -93,23 +104,24 @@ def insert_pagecount(langs, record_iter):
                 continue
             db = lang_to_db[lang]
             try:
-                db.multiInsert('an_pagecount', \
-                    ['name', 'year', 'count'], \
-                    [ [r['name'], r['year'], r['count']] for r in records], \
+                db.multiInsert(
+                    'an_pagecount',
+                    ['name', 'year', 'count'],
+                    [[r['name'], r['year'], r['count']] for r in records],
                     'count = values(count) + count')
             except Exception as e:
                 print('Fail to insert', e)
 
             db.commit()
 
-def save_to_local(dump_dir, langs, record_iter):
-    lang_to_db = {}
 
+def save_to_local(dump_dir, langs, record_iter):
     last_path = None
     lines = []
     for record in record_iter:
         if last_path is not None and last_path != record['path']:
-            save_content(os.path.join(dump_dir, last_path[1:]), '\n'.join(lines))
+            save_content(
+                os.path.join(dump_dir, last_path[1:]), '\n'.join(lines))
             lines = []
 
         lines.append(record['line'])
@@ -129,15 +141,13 @@ if __name__ == '__main__':
 
     langs = ['en', 'ja']
     gz_iter = pagecount_gz_generator(100)
-    content_iter = map(lambda x: {'path': x['path'], 'year': x['year'], 'bin': gzip.decompress(x['gz'])}, gz_iter) 
+    content_iter = map(
+        lambda x: {
+            'path': x['path'],
+            'year': x['year'],
+            'bin': gzip.decompress(x['gz'])
+            }, gz_iter)
     record_iter = record_generator(langs, content_iter)
-    #for ret in insert_pagecount(langs, record_iter):
-    #    pass
 
     for ret in save_to_local(dump_dir, langs, record_iter):
         pass
-        
-        
-        
-
-

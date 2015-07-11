@@ -185,8 +185,11 @@ def decode_if_binary(x):
 
 
 class BaseDB:
-    def __init__(self, dbname):
+    def __init__(self, user, host, pw, dbname):
         self.dbname = dbname
+        self.user = user
+        self.host = host
+        self.pw = pw
         self.write_conn = self.openConn()
         self.read_conn = self.openConn()
         self.insert_records_num = {}
@@ -194,7 +197,8 @@ class BaseDB:
 
     def openConn(self):
         return MySQLdb.connect(
-            host="127.0.0.1", user="root", passwd="",
+            # host="127.0.0.1", user="root", passwd="",
+            host=self.host, user=self.user, passwd=self.pw,
             db=self.dbname, charset='utf8')
 
     def open_conn(self):
@@ -298,9 +302,9 @@ class BaseDB:
 
 
 class WikiDB(BaseDB):
-    def __init__(self, lang):
+    def __init__(self, lang, user, host):
         self.lang = lang
-        super().__init__('%swiki' % (lang, ))
+        super().__init__(user, host, '', '%swiki' % (lang, ))
 
     def allCategoryDataGenerator(self, dict_format=False):
         for cols in selectGenerator(

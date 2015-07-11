@@ -1,11 +1,18 @@
-import os, hashlib, argparse, http.client, time
+import os
+import hashlib
+import argparse
+import http.client
+import time
+from config import user, dbhost
 from dbutils import WikiDB
 from fileutils import save_content
+
 
 def get_image_path(filename, lang='commons'):
     digest = hashlib.md5(filename.encode('utf-8')).hexdigest()
     path = '/wikipedia/%s/%s/%s/%s' % (lang, digest[0], digest[0:2], filename)
     return path
+
 
 def get_content(path):
     conn = http.client.HTTPConnection('upload.wikimedia.org')
@@ -20,7 +27,7 @@ def get_content(path):
 
     data = None
     trycnt = 5
-    while trycnt>0:
+    while trycnt > 0:
         try:
             data = res.read()
             break
@@ -47,8 +54,8 @@ if __name__ == '__main__':
     lang = args['lang']
     current_dir = os.getcwd()
     dest_dir = os.path.join(current_dir, args['path'])
-    
-    db = WikiDB(lang)
+
+    db = WikiDB(lang, user, dbhost)
     pages = db.allFeaturedPageGenerator(dictFormat=True)
     for page in pages:
         records = db.selectAndFetchAll("""
@@ -58,7 +65,7 @@ if __name__ == '__main__':
         """, (page['page_id'],), dictFormat=True, decode=True)
 
         top_record = None
-        top_pos = -1 
+        top_pos = -1
         for record in records:
             filename = record['il_to']
             pos = page['infocontent'].find(filename)
@@ -88,10 +95,3 @@ if __name__ == '__main__':
                 print('File doesn\'t exist: ', path)
             else:
                 save_content(dest_path, image)
-
-
-
-
-
-
-
