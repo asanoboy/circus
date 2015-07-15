@@ -110,11 +110,13 @@ class Page(Base):
         self.name = rt['name']
         self.viewcount = rt['count'] if rt['count'] is not None else 0
 
-        rt = lang_db.selectOne('''
-            select count(*) linknum from an_pagelinks
-            where id_to = %s
-            ''', args=(self.page_id,))
-        self.linknum = rt['linknum']
+        # rt = lang_db.selectOne('''
+        #     select count(*) linknum from an_pagelinks pl
+        #     inner join page p on p.page_id = pl.id_from
+        #     where id_to = %s and p.page_namespace = 0
+        #     ''', args=(self.page_id,))
+        # self.linknum = rt['linknum']
+        self.linknum = 0
 
 
 class Feature(Base):

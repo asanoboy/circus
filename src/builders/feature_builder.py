@@ -1,6 +1,7 @@
 from .builder_utils import IdMap, is_equal_as_pagename
 from model.master import Item, Page, Tag
 from .feature.musical_artist import load as musical_artist_load
+# from debug import get_logger
 
 
 class FeatureItemRelationManager:
@@ -82,14 +83,19 @@ class FeatureItemRelationManager:
         return None
 
     def _load(self):
+        # logger = get_logger(__name__)
         with self.load_features(
                 self.master,
                 self.lang_db,
                 self.get_or_create_by_page_id) as items:
             pages = []
+            item_pages = []
             features = []
             for item in items:
-                pages.extend([p for p in item.pages if p.lang == self.lang])
+                tmp_pages = [p for p in item.pages if p.lang == self.lang]
+                pages.extend(tmp_pages)
+                item_pages.extend(tmp_pages)
+
                 item.visible = 1
                 features.extend(item.features)
                 for f in item.features:
@@ -98,10 +104,47 @@ class FeatureItemRelationManager:
                     f.ref_item.visible = 0
 
             pages = list(set(pages))
-            for p in pages:
+            for i, p in enumerate(pages):
                 p.load_from_wikidb(self.lang_db)
+
                 if p.lang is None:
                     raise Exception('Invalid page_id: %s' % (p.page_id,))
+
+            # with logger.lap('calc_pagelinks_num'):
+            #     item_page_ids = [p.page_id for p in item_pages]
+            #     for i, p in enumerate(item_pages):
+            #         if i % 1000 == 0:
+            #             logger.debug('load page.linknum at %s' % (i,))
+
+            #         linknum = 0
+            #         if 0:
+            #             for record in self.lang_db.selectAndFetchAll('''
+            #                     select pl.id_from
+            #                     from an_pagelinks_multi pl
+            #                     inner join page p on p.page_id = pl.id_from
+            #                     where id_to = %s
+            #                     ''', args=(p.page_id,)):
+            #                 if record['id_from'] in item_page_ids:
+            #                     linknum += 1
+            #         else:
+            #             cur = 0
+            #             num = 100000
+            #             while cur < len(item_page_ids):
+            #                 rs = self.lang_db.selectOne(
+            #                     '''
+            #                     select count(*) count
+            #                     from an_pagelinks_multi pl
+            #                     inner join page p on p.page_id = pl.id_from
+            #                     where id_to = %s and id_from in (
+            #                     ''' +
+            #                     ','.join([
+            #                         str(i)
+            #                         for i in item_page_ids[cur:cur+num]]) +
+            #                     ')', args=(p.page_id,))
+            #                 linknum += rs['count']
+            #                 cur += num
+            #             pass
+            #         p.linknum = linknum
 
                 # print('fuga', p.name, p.page_id, p.viewcount, p)
 
