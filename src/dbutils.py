@@ -16,9 +16,12 @@ def master_session(name, base, **kw):
 
 
 @contextmanager
-def open_session(hostname, user, name, base, truncate=False, **kw):
+def open_session(hostname, user, name, base, pw=None, truncate=False, **kw):
+    if pw is not None:
+        user += ':' + pw
+
     engine = create_engine(
-        'mysql://%s:@%s/%s?charset=utf8' % (user, hostname, name,), **kw)
+        'mysql://%s@%s/%s?charset=utf8' % (user, hostname, name,), **kw)
     if truncate:
         with closing(engine.connect()) as con:
             trans = con.begin()
@@ -189,7 +192,7 @@ class BaseDB:
         self.dbname = dbname
         self.user = user
         self.host = host
-        self.pw = pw
+        self.pw = pw if pw is not None else ''
         self.write_conn = self.openConn()
         self.read_conn = self.openConn()
         self.insert_records_num = {}
@@ -302,9 +305,9 @@ class BaseDB:
 
 
 class WikiDB(BaseDB):
-    def __init__(self, lang, user, host):
+    def __init__(self, lang, user, host, pw=None):
         self.lang = lang
-        super().__init__(user, host, '', '%swiki' % (lang, ))
+        super().__init__(user, host, pw, '%swiki' % (lang, ))
 
     def allCategoryDataGenerator(self, dict_format=False):
         for cols in selectGenerator(
