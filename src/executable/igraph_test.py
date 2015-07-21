@@ -2,37 +2,15 @@ from igraph import Graph, plot
 from igraph.clustering import VertexDendrogram, VertexClustering
 from debug import get_logger, set_config
 from config import log_path
-
-def as_clustering_if_not(obj):
-    if isinstance(obj, VertexDendrogram):
-        return obj.as_clustering()
-    elif isinstance(obj, VertexClustering):
-        return obj
-    return None
-
-
-def show(obj, save=None):
-    p = None
-    if isinstance(obj, Graph):
-        p = plot(obj)
-    elif isinstance(obj, VertexDendrogram):
-        p = plot(obj.as_clustering())
-    elif isinstance(obj, VertexClustering):
-        p = plot(obj)
-    else:
-        return None
-
-    if save:
-        p.save('%s.png' % (save,))
-    else:
-        p.show()
+from clustering.utils import as_clustering_if_not, save_cluster
 
 
 if __name__ == '__main__':
     set_config(log_path)
     logger = get_logger(__name__)
 
-    g = Graph.GRG(1000, 0.06)
+    # g = Graph.GRG(1000, 0.06)
+    g = Graph.GRG(10000, 0.02)
     print('vertices num: ', len(g.vs))
     print('edges num   : ', len(g.es))
     print('es/vs num   : ', len(g.es) / len(g.vs))
@@ -79,6 +57,6 @@ if __name__ == '__main__':
         method_to_comm[method] = g.community_walktrap()
 
     for method, c in method_to_comm.items():
-        # show(c, save=method)
+        save_cluster(c, method)
         cl = as_clustering_if_not(c)
-        logger.debug('len = %s, %s' % (len(cl.subgraphs()), method))
+        logger.debug('len = %s, mod = %s %s' % (len(cl.subgraphs()), cl.q, method))
