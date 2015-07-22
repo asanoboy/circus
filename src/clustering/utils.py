@@ -63,9 +63,9 @@ def get_method_to_comm(g):
     # with logger.lap(method):
     #     method_to_comm[method] = g.community_optimal_modularity()
 
-    method = 'spinglass'
-    with logger.lap(method):
-        method_to_comm[method] = g.community_spinglass()
+    # method = 'spinglass'
+    # with logger.lap(method):
+    #     method_to_comm[method] = g.community_spinglass()
 
     method = 'walktrap'
     with logger.lap(method):

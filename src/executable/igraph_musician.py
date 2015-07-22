@@ -27,24 +27,23 @@ if True or __name__ == '__main__':
         pid_joined = ','.join([str(i) for i in pid_to_page.keys()])
         links = wiki_db.selectAndFetchAll('''
             select id_from, id_to from an_pagelinks_picked
-            where id_from in (%s) and id_to in (%s)
+            where id_from in (%s) and id_to in (%s) and id_from > id_to
             ''' % (pid_joined, pid_joined))
 
         g = Graph()
+        logger.debug('page_num=%s' % (len(pid_to_page),))
         for pid, page in pid_to_page.items():
-            g.add_vertex(str(pid), label=page.name)
-            print(str(pid), page.name)
+            if page.linknum >= 10:
+                g.add_vertex(str(pid), label=page.name)
+            else:
+                g.add_vertex(str(pid))
 
-        for link in links:
-            id_from = link['id_from']
-            id_to = link['id_to']
-            if id_from > id_to:
-                continue
-            g.add_edge(str(id_from), str(id_to))
+        logger.debug('link_num=%s' % (len(links),))
+        g.add_edges([(str(r['id_from']), str(r['id_to'])) for r in links])
         
         method_to_comm = get_method_to_comm(g)
         for method, c in method_to_comm.items():
-            save_cluster(c, method, box=(4000, 4000))
+            save_cluster(c, method, box=(10000, 10000))
             cl = as_clustering_if_not(c)
             logger.debug(
                 'len = %s, mod = %s %s' % (
