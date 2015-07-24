@@ -11,6 +11,7 @@ class Builder:
         logger = get_logger(__name__)
         tags = self.session.query(Tag).all()
         item_pages = []
+        NOT_FOUND = 9999
         for tag in tags:
             for item in tag.items:
                 for page in item.pages:
@@ -21,14 +22,16 @@ class Builder:
         joined_ids = ','.join([str(p.page_id) for p in item_pages])
         self.wiki_db.updateQuery('''
             insert into an_pagelinks_picked
-            select id_from, id_to, 0 as odr from an_pagelinks_multi
+            select id_from, id_to, %s as odr from an_pagelinks_multi
             where id_from in (%s) and id_to in (%s)
-            ''' % (joined_ids, joined_ids))
+            ''' % (NOT_FOUND, joined_ids, joined_ids))
+        self.wiki_db.commit()
 
         for p in item_pages:
             p_obj = self.wiki_db.createPageByTitle(p.name, with_info=False)
             pos_to_dest_id = {}
             content = p_obj.text
+            logger.debug('page_id = %s', p.page_id)
             for rec in self.wiki_db.selectAndFetchAll('''
                     select id_to from an_pagelinks_picked
                     where id_from = %s
@@ -38,18 +41,25 @@ class Builder:
                     select name from an_page where page_id = %s
                     ''', (id_to,))
                 name_to = rec_to['name']
-                pos = content.find(name_to)
+                pos = content.find(' '.join(name_to.split('_')))
                 if pos == -1:
                     logger.debug(
                         'Not found link "%s" in page "%s"' % (name_to, p.name))
-                    continue
-                pos_to_dest_id[pos] = id_to
-            pass
+                else:
+                    pos_to_dest_id[pos] = id_to
+
             for odr, pos in enumerate(sorted(pos_to_dest_id.keys())):
                 self.wiki_db.updateQuery('''
-                update an_pagelinks_picked
-                set odr = %s
-                where id_from = %s and id_to = %s
-                ''', (odr, p.page_id, pos_to_dest_id[pos]))
-            
+                    update an_pagelinks_picked
+                    set odr = %s
+                    where id_from = %s and id_to = %s
+                    ''', (odr, p.page_id, pos_to_dest_id[pos]))
+
         self.wiki_db.commit()
+
+        self.wiki_db.updateQuery('''
+            delete from an_pagelinks_picked
+            where odr = %s
+            ''', (NOT_FOUND,))
+        self.wiki_db.commit()
+
