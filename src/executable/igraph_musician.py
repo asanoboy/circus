@@ -53,7 +53,8 @@ if True or __name__ == '__main__':
                 pid_to_id[r['id_to']]
             ] for r in links])
         
-        # method_to_comm = get_method_to_comm(g)
+        g.vs['hands'] = [len(v.neighbors()) for v in g.vs]
+        method_to_comm = get_method_to_comm(g)
         # for method, c in method_to_comm.items():
         #     save_cluster(c, method, box=(10000, 10000))
         #     cl = as_clustering_if_not(c)

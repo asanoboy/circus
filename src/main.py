@@ -1,5 +1,5 @@
 import argparse
-from config import dbhost, user, log_dir
+from config import dbhost, user, log_dir, pw
 from dbutils import WikiDB, open_session
 from model.master import Base
 from debug import get_logger, set_config
@@ -46,8 +46,8 @@ if __name__ == '__main__':
     imported_langs = ['en', 'ja']
 
     # master_db = MasterWikiDB('wikimaster')
-    lang_to_db = { l: WikiDB(l, user, dbhost) for l in imported_langs }
-    with open_session(dbhost, user, 'master', Base, truncate=False) as session:
+    lang_to_db = { l: WikiDB(l, user, dbhost, pw) for l in imported_langs }
+    with open_session(dbhost, user, 'master', Base, pw, truncate=False) as session:
         for lang in langs:
             wiki_db = lang_to_db[lang]
             other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
@@ -71,5 +71,5 @@ if __name__ == '__main__':
         ## holder.push(PopularityCalc(session, lang_to_db.values()))
         # holder.push(ItemFeatureBuilder(session))
         # holder.push(FeatureRelationBuilder(session))
-        #h older.push(StrengthCalc(master_db))
+        # holder.push(StrengthCalc(master_db))
         holder.build()

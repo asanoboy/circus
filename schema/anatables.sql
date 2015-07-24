@@ -85,6 +85,7 @@ create table an_pagelinks_multi (
 create table an_pagelinks_picked (
     id_from int NOT NULL,
     id_to int NOT NULL,
+    odr int NOT NULL,
     index id_from(id_from),
     index id_to(id_to)
 );
