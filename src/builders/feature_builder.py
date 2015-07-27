@@ -37,11 +37,16 @@ class FeatureItemRelationManager:
             item = self._find_item(page_id, page_record['name'])
             if item:
                 self.item_map.set(page_id, item)
-                item.pages.append(Page(page_id=page_id, lang=self.lang))
+                page = Page(page_id=page_id, lang=self.lang)
+                page.load_from_wikidb(self.lang_db)
+                item.pages.append(page)
                 return item
 
             item = self.item_map.get_or_create(page_id)
-            item.pages.append(Page(page_id=page_id, lang=self.lang))
+            page = Page(page_id=page_id, lang=self.lang)
+            page.load_from_wikidb(self.lang_db)
+            item.pages.append(page)
+
             return item
 
     def _find_item(self, page_id, page_name):
@@ -182,7 +187,7 @@ class FeatureItemRelationManager:
 class FeatureBuilder:
     def __init__(self, master, lang_db, other_lang_dbs):
         tag_id = 1
-        tag_name = 'Music Genre'
+        tag_name = 'Music Artist'
 
         self.fir_manager = FeatureItemRelationManager(
             master,

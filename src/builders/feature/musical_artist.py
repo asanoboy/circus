@@ -1,7 +1,7 @@
 import json
 import re
 from contextlib import contextmanager
-from model.master import Base, Page, Feature, Item
+from model.master import Base, Page, Feature, Item, Tag
 from ..builder_utils import find_links_from_wiki, PageNameResolver, IdMap
 from sqlalchemy import Table, Column, Integer, ForeignKey
 from sqlalchemy.orm import relationship
@@ -96,6 +96,14 @@ class Loader:
         self.album_infobox_artist = 'artist'
         self.album_infobox_released = 'released'
 
+    def load_genre_tag(self, session):
+        GENRE_TAG_NAME = 'music_genre'
+        GENRE_TAG_ID = 2
+        tag = session.query(Tag).filter(Tag.id == GENRE_TAG_ID).first()
+        if tag is None:
+            tag = Tag(id=GENRE_TAG_ID, name=GENRE_TAG_NAME)
+        self.genre_tag = tag
+
     def get_or_create_musician(self, page_id):
         if self.musician_map.has(page_id):
             return self.musician_map.get_or_create(page_id)
@@ -112,7 +120,8 @@ class Loader:
         return self.genre_year_map.get_or_create(
             key, ref_item=genre, year=year)
 
-    def load(self):
+    def load(self, session):
+        self.load_genre_tag(session)
         self.load_musicians()
         self.load_album()
         self.load_genre_year()
@@ -193,7 +202,11 @@ class Loader:
 
             genres = []
             for page_id in [r['page_id'] for r in genre_records]:
-                genres.append(self.get_or_create_genre(page_id))
+                item = self.get_or_create_genre(page_id)
+                tags = [t for t in item.tags if t == self.genre_tag]
+                if len(tags) == 0:
+                    item.tags.append(self.genre_tag)
+                genres.append(item)
 
             if len(genres) == 0:
                 '''
@@ -269,6 +282,6 @@ class Loader:
 @contextmanager
 def load(session, lang_db, get_or_create_item_by_page_id):
     loader = Loader(lang_db, get_or_create_item_by_page_id)
-    loader.load()
+    loader.load(session)
     yield loader.result()
     loader.finish(session)

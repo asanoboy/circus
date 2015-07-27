@@ -39,15 +39,17 @@ if __name__ == '__main__':
     set_config(log_dir + '/log')
     parser = argparse.ArgumentParser()
     parser.add_argument('-l', '--langs')  # ja,en
+    parser.add_argument('-t', '--trunc', nargs='?')
     args = parser.parse_args()
     args = vars(args)
 
     langs = args['langs'].split(',')
+    truncate = 'trunc' in args
     imported_langs = ['en', 'ja']
 
     # master_db = MasterWikiDB('wikimaster')
     lang_to_db = { l: WikiDB(l, user, dbhost, pw) for l in imported_langs }
-    with open_session(dbhost, user, 'master', Base, pw, truncate=False) as session:
+    with open_session(dbhost, user, 'master', Base, pw, truncate=truncate) as session:
         for lang in langs:
             wiki_db = lang_to_db[lang]
             other_dbs = [db for db in lang_to_db.values() if db.lang != lang]
@@ -63,8 +65,8 @@ if __name__ == '__main__':
             #holder.push(PagelinksFeaturedBuilder(wiki_db))
 
             ## holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-            # holder.push(FeatureBuilder(session, wiki_db, other_dbs))
-            holder.push(ItemPagelinksBuilder(session, wiki_db))
+            holder.push(FeatureBuilder(session, wiki_db, other_dbs))
+            # holder.push(ItemPagelinksBuilder(session, wiki_db))
             holder.build()
 
         holder = BuilderHolder('master')
