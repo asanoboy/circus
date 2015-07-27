@@ -8,6 +8,7 @@ from builders.pagelinks_featured import PagelinksFeaturedBuilder
 from builders.pagelinks import PagelinksBuilder
 from builders.pagelinks_multi import Builder as PagelinksMultiBuilder
 from builders.item_pagelinks import Builder as ItemPagelinksBuilder
+from builders.pagelinks_music_genre import Builder as PagelinksMusicGenreBuilder
 from builders.info_builder import InfoBuilder
 from builders.page_builder import PageBuilder
 from builders.category_builder import CategoryBuilder
@@ -38,13 +39,13 @@ class BuilderHolder:
 if __name__ == '__main__':
     set_config(log_dir + '/log')
     parser = argparse.ArgumentParser()
-    parser.add_argument('-l', '--langs')  # ja,en
-    parser.add_argument('-t', '--trunc', nargs='?')
+    parser.add_argument('-l', '--langs', required=True)  # ja,en
+    parser.add_argument('-t', '--trunc', action='store_true')
     args = parser.parse_args()
     args = vars(args)
 
     langs = args['langs'].split(',')
-    truncate = 'trunc' in args
+    truncate = args['trunc']
     imported_langs = ['en', 'ja']
 
     # master_db = MasterWikiDB('wikimaster')
@@ -65,8 +66,9 @@ if __name__ == '__main__':
             #holder.push(PagelinksFeaturedBuilder(wiki_db))
 
             ## holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
-            holder.push(FeatureBuilder(session, wiki_db, other_dbs))
+            # holder.push(FeatureBuilder(session, wiki_db, other_dbs))
             # holder.push(ItemPagelinksBuilder(session, wiki_db))
+            holder.push(PagelinksMusicGenreBuilder(session, wiki_db))
             holder.build()
 
         holder = BuilderHolder('master')

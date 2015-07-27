@@ -90,6 +90,14 @@ create table an_pagelinks_picked (
     index id_to(id_to)
 );
 
+create table an_pagelinks_music_genre (
+    id_from int NOT NULL,
+    id_to int NOT NULL,
+    odr int NOT NULL,
+    index id_from(id_from),
+    index id_to(id_to)
+);
+
 create table an_pagelinks_filtered (
     id_from int NOT NULL,
     id_to int NOT NULL,

@@ -9,7 +9,7 @@ class Builder:
 
     def build(self):
         logger = get_logger(__name__)
-        tags = self.session.query(Tag).all()
+        tags = self.session.query(Tag).filter(Tag.id == 1).all()
         item_pages = []
         NOT_FOUND = 9999
         for tag in tags:
@@ -62,4 +62,3 @@ class Builder:
             where odr = %s
             ''', (NOT_FOUND,))
         self.wiki_db.commit()
-
