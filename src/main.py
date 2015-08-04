@@ -9,6 +9,8 @@ from builders.pagelinks import PagelinksBuilder
 from builders.pagelinks_multi import Builder as PagelinksMultiBuilder
 from builders.item_pagelinks import Builder as ItemPagelinksBuilder
 from builders.pagelinks_music_genre import Builder as PagelinksMusicGenreBuilder
+from builders.pagelinks_musical_artist_for_topic \
+    import Builder as PagelinksMusicalArtistForTopic
 from builders.info_builder import InfoBuilder
 from builders.page_builder import PageBuilder
 from builders.category_builder import CategoryBuilder
@@ -68,7 +70,8 @@ if __name__ == '__main__':
             ## holder.push(ItemTagBuilder(master_db, wiki_db, other_dbs))
             # holder.push(FeatureBuilder(session, wiki_db, other_dbs))
             # holder.push(ItemPagelinksBuilder(session, wiki_db))
-            holder.push(PagelinksMusicGenreBuilder(session, wiki_db))
+            # holder.push(PagelinksMusicGenreBuilder(session, wiki_db))
+            holder.push(PagelinksMusicalArtistForTopic(session, wiki_db))
             holder.build()
 
         holder = BuilderHolder('master')

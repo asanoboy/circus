@@ -2,7 +2,7 @@ from itertools import chain
 from model.master import Tag
 
 
-class Builder:
+class MusicHelper:
     def __init__(self, session, wiki_db):
         self.session = session
         self.wiki_db = wiki_db
@@ -22,9 +22,15 @@ class Builder:
     def get_musician_pages(self):
         return self._get_pages_from_tag_id(1)
 
+
+class Builder:
+    def __init__(self, session, wiki_db):
+        self.helper = MusicHelper(session, wiki_db)
+        self.wiki_db = wiki_db
+
     def build(self):
-        genres = self.get_genre_pages()
-        musicians = self.get_musician_pages()
+        genres = self.helper.get_genre_pages()
+        musicians = self.helper.get_musician_pages()
 
         genre_page_id_joined = ','.join(
             [str(p.page_id) for p in genres])

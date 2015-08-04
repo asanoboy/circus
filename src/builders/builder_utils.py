@@ -122,6 +122,10 @@ class PageFactory:
         return page
 
 
+def find_link_from_wiki(page_name, wiki_text, start=0):
+    return wiki_text.find(' '.join(page_name.split('_')), start)
+
+
 def find_links_from_wiki(wiki_text):
     links = []
     needle = 0
