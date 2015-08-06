@@ -101,7 +101,7 @@ create table an_pagelinks_music_genre (
 create table an_pagelinks_musical_artist_for_topic (
     id_from int NOT NULL,
     id_to int NOT NULL,
-    odr int NOT NULL,
+    odr float NOT NULL,
     index id_from(id_from),
     index id_to(id_to)
 );

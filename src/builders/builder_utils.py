@@ -123,7 +123,19 @@ class PageFactory:
 
 
 def find_link_from_wiki(page_name, wiki_text, start=0):
-    return wiki_text.find(' '.join(page_name.split('_')), start)
+    pos1 = wiki_text.find('[' + (' '.join(page_name.split('_'))) + '|', start)
+    pos2 = wiki_text.find('[' + (' '.join(page_name.split('_'))) + ']', start)
+    if pos1 >= 0 and pos2 >= 0:
+        if pos1 > pos2:
+            return pos1
+        else:
+            return pos2
+    elif pos1 >= 0:
+        return pos1
+    elif pos2 >= 0:
+        return pos2
+    else:
+        return -1
 
 
 def find_links_from_wiki(wiki_text):
