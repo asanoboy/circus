@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm.session import sessionmaker
 from sqlalchemy.sql.expression import ClauseElement
+from debug import get_logger
 
 
 @contextmanager
@@ -122,20 +123,57 @@ class PageFactory:
         return page
 
 
-def find_link_from_wiki(page_name, wiki_text, start=0):
-    pos1 = wiki_text.find('[' + (' '.join(page_name.split('_'))) + '|', start)
-    pos2 = wiki_text.find('[' + (' '.join(page_name.split('_'))) + ']', start)
-    if pos1 >= 0 and pos2 >= 0:
-        if pos1 > pos2:
-            return pos1
-        else:
-            return pos2
-    elif pos1 >= 0:
-        return pos1
-    elif pos2 >= 0:
-        return pos2
-    else:
+def find_multi_from_text(text, words, pos=0):
+    pos_list = [text.find(w, pos) for w in words]
+    valid_pos_list = [p for p in pos_list if p != -1]
+    if len(valid_pos_list) == 0:
         return -1
+
+    return min(valid_pos_list)
+
+
+def strip_wiki_table(text):
+    logger = get_logger(__name__)
+    rt = ''
+    start = 0
+    while 1:
+        table_start_pos = text.find('{|', start)
+        if table_start_pos == -1:
+            rt += text[start:]
+            break
+
+        table_end_pos = find_multi_from_text(
+            text, ['|}', '-}', '\\n\\n'], table_start_pos)
+        if table_end_pos == -1:
+            logger.debug(
+                'Invalid wiki table syntax, pos_from=%s, "%s"' %
+                (table_start_pos, text[:1000],))
+            return text
+
+        rt += text[start:table_start_pos-1]
+        start = table_end_pos + 1
+
+    return rt
+
+
+def find_link_from_wiki(page_name, wiki_text):
+    start = 0
+    while 1:
+        pos1 = wiki_text.find(
+            '[' + (' '.join(page_name.split('_'))) + '|', start)
+        pos2 = wiki_text.find(
+            '[' + (' '.join(page_name.split('_'))) + ']', start)
+        if pos1 >= 0 and pos2 >= 0:
+            found = min([pos1, pos2])
+        elif pos1 >= 0:
+            found = pos1
+        elif pos2 >= 0:
+            found = pos2
+        else:
+            break
+
+        yield found
+        start = found + 1
 
 
 def find_links_from_wiki(wiki_text):

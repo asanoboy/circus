@@ -1,5 +1,5 @@
 from .pagelinks_music_genre import MusicHelper
-from .builder_utils import find_link_from_wiki
+from .builder_utils import find_link_from_wiki, strip_wiki_table
 from circus_itertools import lazy_chunked as chunked
 from debug import get_logger
 
@@ -48,15 +48,11 @@ class Builder:
                     continue
 
                 odr = 0
-                start_pos = 0
-                content_length = len(page_obj.text)
-                while 1:
-                    pos = find_link_from_wiki(
-                        page_name, page_obj.text, start_pos)
-                    if pos == -1:
-                        break
+                content = strip_wiki_table(page_obj.text)
+                content_length = len(content)
+                for pos in find_link_from_wiki(
+                        page_name, content):
                     odr += (pos / content_length - 1) ** 2
-                    start_pos = pos + 1
 
                 if odr > 0:
                     insert_records.append([p.page_id, page_id, odr])

@@ -22,23 +22,27 @@ class Logger:
         global file_handler
         self.logger = logging.getLogger(name)
         if file_handler:
-            print('set file handler')
             self.logger.addHandler(file_handler)
 
     def debug(self, *args, **kw):
-        return self.logger.debug(*args, **kw)
+        text = ' '.join([str(arg) for arg in args])
+        return self.logger.debug(text)
 
     def info(self, *args, **kw):
-        return self.logger.info(*args, **kw)
+        text = ' '.join([str(arg) for arg in args])
+        return self.logger.debug(text)
 
     def warning(self, *args, **kw):
-        return self.logger.warning(*args, **kw)
+        text = ' '.join([str(arg) for arg in args])
+        return self.logger.info(text)
 
     def error(self, *args, **kw):
-        return self.logger.error(*args, **kw)
+        text = ' '.join([str(arg) for arg in args])
+        return self.logger.error(text)
 
     def critical(self, *args, **kw):
-        return self.logger.critical(*args, **kw)
+        text = ' '.join([str(arg) for arg in args])
+        return self.logger.critical(text)
 
     def lap(self, tag):
         return Lap(tag, self.logger)
