@@ -4,7 +4,21 @@ from urllib.parse import urlparse, urlencode
 from bs4 import BeautifulSoup as Soup
 
 
-def get(url_str, proxy=None):
+class ProxyHost:
+    def __init__(self, host_and_port, region):
+        host, port = host_and_port.split(':')
+        self.host = host
+        self.port = port
+        self.region = region
+
+    def __str__(self):
+        if self.region:
+            return '%s:%s(%s)' % (self.host, self.port, self.region)
+        else:
+            return '%s:%s' % (self.host, self.port)
+
+
+def get(url_str, proxy=None, timeout=None):
     '''
     @param proxy like '1.1.1.1:8080'
     '''
@@ -16,11 +30,11 @@ def get(url_str, proxy=None):
         port = url.port
 
     if proxy:
-        p_host, p_port = proxy.split(':')
-        conn = http.client.HTTPConnection(p_host, p_port)
+        conn = http.client.HTTPConnection(
+            proxy.host, proxy.port, timeout=timeout)
         conn.request('GET', url_str)
     else:
-        conn = http.client.HTTPConnection(url.hostname, port)
+        conn = http.client.HTTPConnection(url.hostname, port, timeout=timeout)
         conn.request('GET', url.path)
 
     res = conn.getresponse()
@@ -30,16 +44,24 @@ def get(url_str, proxy=None):
 content_type_pattern = re.compile('charset=(.+)$', re.IGNORECASE)
 
 
-def get_html(url_str, proxy=None, encode=None):
-    res = get(url_str, proxy=proxy)
+def get_html(url_str, proxy=None, encode=None, timeout=None):
+    try:
+        res = get(url_str, proxy=proxy, timeout=timeout)
+    except:
+        return None
+
     if res.code == 200:
+        try:
+            content = res.readall()
+        except:
+            return None
         if encode:
-            return res.readall().decode(encode)
+            return content.decode(encode)
         content_type = res.getheader('content-type')
         mat = content_type_pattern.search(content_type)
         if mat is None:
             raise 'Invalid content_type: %s' % (content_type,)
-        return res.readall().decode(mat.group(1))
+        return content.decode(mat.group(1))
 
     return None
 
@@ -63,4 +85,8 @@ def get_proxy_list():
     if not html:
         return None
     sp = Soup(html, 'html.parser')
-    return [el.get_text() for el in sp.select('a.A')]
+    return [
+        ProxyHost(
+            el.get_text(),
+            el.attrs['title'] if el.has_attr('title') else None)
+        for el in sp.select('a.A')]
