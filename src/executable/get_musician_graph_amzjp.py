@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup as Soup
 from http_utils import get_html, get_proxy_list
 from debug import get_logger
 from urllib.parse import urlparse
+import re
 import os
 import time
 import random
@@ -14,12 +15,16 @@ class AmazonHandler:
     def __init__(self, lang):
         if lang == 'ja':
             self.data_dir = '/mnt/hdd500/amazon/jp/musician'
+            self.title_pattern = re.compile('Amazon.co.jp: ([^:]+):')
+            self.worksnum_pattern = re.compile('\\(([0-9]+)')
         elif lang == 'us':
             self.data_dir = '/mnt/hdd500/amazon/us/musician'
         else:
             raise 'Invalid lang: %s' % (lang,)
 
         self.link_selector = '#entitySimsTable a'
+        self.work_selector = 'div.customFaceoutImage'
+        self.works_num_selector = '#twAlbumCountHeader a'
 
     def calc_data_path(self, page):
         page_id = page.get_id()
@@ -27,22 +32,67 @@ class AmazonHandler:
         data_path = os.path.join(self.data_dir, dirname, page_id)
         return data_path
 
-    def is_musician_dom(self, soup):
-        return len(soup.select('div.MusicCartBar')) > 0
-
 
 class Page:
-    def __init__(self, url):
+    @staticmethod
+    def create_by_url(url, amz):
+        page = Page(amz)
+        page.set_url(url)
+        return page
+
+    @staticmethod
+    def create_by_html(page_id, content, amz):
+        page = Page(amz)
+        page.set_content(content)
+        page.id = page_id
+        return page
+
+    def __init__(self, amz):
+        self.url = None
+        self.url_obj = None
+        self.content = None
+        self.amz = amz
+
+    def set_url(self, url):
         self.url = url
         self.url_obj = urlparse(url)
-        self.content = None
+        path = self.url_obj.path
+        self.id = '_'.join(path.split('/')[2:4])
 
     def get_id(self):
-        path = self.url_obj.path
-        return '_'.join(path.split('/')[2:4])
+        return self.id
+
+    def title(self):
+        dom_title = self.soup.select_one('title').text
+        mat = self.amz.title_pattern.match(dom_title)
+        if not mat:
+            return False
+        return mat.group(1)
 
     def set_content(self, content):
         self.content = content
+        self.soup = Soup(content, 'html.parser')
+
+    def is_musician(self):
+        return len(self.soup.select('div.MusicCartBar')) > 0
+
+    def create_similar_pages(self):
+        link_elems = self.soup.select(self.amz.link_selector)
+        link_urls = [elem.get('href').strip() for elem in link_elems]
+        return [Page.create_by_url(url, self.amz) for url in link_urls]
+
+    def get_works_num(self):
+        elem = self.soup.select_one(self.amz.works_num_selector)
+        if elem is None:
+            return self.get_works_num_in_first_page()
+
+        mat = self.amz.worksnum_pattern.match(elem.text)
+        if not mat:
+            return False
+        return mat.group(1)
+
+    def get_works_num_in_first_page(self):
+        return len(self.soup.select(self.amz.work_selector))
 
 
 def load_content(page, amz, proxy, sleep):
@@ -111,7 +161,7 @@ if __name__ == '__main__':
         init_url = 'http://www.amazon.com/The-Chemical-Brothers/e/B000AQ22AU/'
     else:
         raise 'Invalid lang = %s' % (lang,)
-    page_stack = [Page(init_url)]
+    page_stack = [Page.create_by_url(init_url, amz)]
     page_ids = [p.get_id() for p in page_stack]
 
     while len(page_stack) > 0:
@@ -134,12 +184,9 @@ if __name__ == '__main__':
                 'Can\'t load: url = ', page.url)
             continue
 
-        sp = Soup(page.content, 'html.parser')
-        if not amz.is_musician_dom(sp):
+        if not page.is_musician():
             continue
-        link_elems = sp.select(amz.link_selector)
-        link_urls = [elem.get('href').strip() for elem in link_elems]
-        for link_page in [Page(url) for url in link_urls]:
+        for link_page in page.create_similar_pages():
             page_id = link_page.get_id()
             if page_id in page_ids:
                 continue
