@@ -9,6 +9,7 @@ import time
 import random
 import hashlib
 import argparse
+from functools import reduce
 
 
 class AmazonHandler:
@@ -105,11 +106,17 @@ def load_content(page, amz, proxy, sleep):
             page.set_content(content)
             return True
 
+    start_at = time.time()
     with logger.lap('get_html proxy=%s' % (proxy,)):
-        html = get_html(page.url, proxy=proxy, timeout=30)
+        html = get_html(page.url, proxy=proxy.proxy, timeout=20)
+    elapsed_sec = time.time() - start_at
 
     if html is None:
+        proxy.log_fail(elapsed_sec)
         return None
+    else:
+        proxy.log_success(elapsed_sec)
+
     page.set_content(html)
 
     dir_path = os.path.dirname(data_path)
@@ -118,7 +125,8 @@ def load_content(page, amz, proxy, sleep):
     with open(data_path, 'w') as f:
         f.write(html)
 
-    time.sleep(sleep)
+    if sleep - elapsed_sec > 0:
+        time.sleep(sleep - elapsed_sec)
     return True
 
 
@@ -126,17 +134,58 @@ proxy_list = []
 proxy_updated_at = 0
 
 
+class ProxyWrapper:
+    def __init__(self, proxy):
+        self.proxy = proxy
+        self.successes = []
+        self.fails = []
+
+    def __str__(self):
+        return self.proxy.__str__()
+
+    def log_success(self, elapsed_sec):
+        self.successes.append(elapsed_sec)
+
+    def log_fail(self, elapsed_sec):
+        self.fails.append(elapsed_sec)
+
+    def is_available(self):
+        if len(self.fails) <= 1:
+            return True
+
+        if len(self.successes) >= len(self.fails):
+            return True
+
+        return False
+
+    def dump(self):
+        success_num = len(self.successes)
+        fail_num = len(self.fails)
+        if success_num > 0:
+            success_ave = reduce(
+                lambda x, y: x + y, self.successes) / success_num
+        else:
+            success_ave = -1
+
+        return '%s: success_rate = %d / %d, meantime = %d' % (
+            self.proxy.__str__(),
+            success_num,
+            success_num + fail_num,
+            success_ave)
+
+
 def update_proxy():
     logger = get_logger(__name__)
     global proxy_list
     global proxy_updated_at
-    trial = 5
-    while trial > 0:
+    for _ in range(5):
         candidates = get_proxy_list()
         if candidates is None:
             time.sleep(5)
-            trial -= 1
-        proxy_list = candidates[:20]
+            continue
+        for proxy in proxy_list:
+            logger.debug(proxy.dump())
+        proxy_list = [ProxyWrapper(p) for p in candidates[:30]]
         proxy_updated_at = time.time()
         logger.debug('Succeed to update proxy', proxy_updated_at)
         return True
@@ -165,7 +214,7 @@ if __name__ == '__main__':
     page_ids = [p.get_id() for p in page_stack]
 
     while len(page_stack) > 0:
-        if time.time() - proxy_updated_at > 1000:
+        if time.time() - proxy_updated_at > 3600:
             if not update_proxy():
                 raise 'Can\'t update proxy'
         logger.debug('stack_length = ', len(page_stack))
@@ -173,7 +222,9 @@ if __name__ == '__main__':
         logger.debug('page_id=', page.get_id())
 
         for i in range(5):
-            proxy = random.sample(proxy_list, 1)[0]
+            proxy = random.sample(
+                [p for p in proxy_list if p.is_available()],
+                1)[0]
             if load_content(page, amz, proxy, 10):
                 break
             logger.debug(

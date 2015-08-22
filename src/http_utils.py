@@ -81,7 +81,10 @@ def post(url_str, keyvalue):
 
 def get_proxy_list():
     url = 'http://www.cybersyndrome.net/pla.html'
-    html = get_html(url, encode='utf-8')
+    for _ in range(5):
+        html = get_html(url, encode='utf-8')
+        if html:
+            break
     if not html:
         return None
     sp = Soup(html, 'html.parser')
