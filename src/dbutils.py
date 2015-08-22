@@ -246,6 +246,9 @@ class BaseDB:
 
         return True
 
+    def multi_insert(self, *args, **kw):
+        return self.multiInsert(*args, **kw)
+
     def updateQuery(self, query, args=set()):
         cur = self.write_conn.cursor()
         cur.execute(query, args)
@@ -290,6 +293,9 @@ class BaseDB:
 
         cur.close()
         return rt
+
+    def select_all(self, *args, **kw):
+        return self.selectAndFetchAll(*args, **kw)
 
     def commit(self):
         print('commit')

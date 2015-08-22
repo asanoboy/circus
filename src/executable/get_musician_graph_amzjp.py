@@ -20,6 +20,8 @@ class AmazonHandler:
             self.worksnum_pattern = re.compile('\\(([0-9]+)')
         elif lang == 'us':
             self.data_dir = '/mnt/hdd500/amazon/us/musician'
+            self.title_pattern = re.compile('Amazon.com: ([^:]+):')
+            self.worksnum_pattern = re.compile('\\(See all ([0-9]+)')
         else:
             raise 'Invalid lang: %s' % (lang,)
 
@@ -149,14 +151,23 @@ class ProxyWrapper:
     def log_fail(self, elapsed_sec):
         self.fails.append(elapsed_sec)
 
-    def is_available(self):
-        if len(self.fails) <= 1:
-            return True
+    def is_available(self, meantime=10):
+        for _ in range(1):
+            if len(self.fails) <= 1:
+                break
 
-        if len(self.successes) >= len(self.fails):
-            return True
+            if len(self.successes) >= len(self.fails):
+                break
 
-        return False
+            return False
+
+        if len(self.successes) >= 2 and \
+            reduce(
+                lambda x, y: x + y, self.successes) / \
+                len(self.successes) >= meantime:
+            return False
+
+        return True
 
     def dump(self):
         success_num = len(self.successes)
@@ -217,9 +228,10 @@ if __name__ == '__main__':
         if time.time() - proxy_updated_at > 3600:
             if not update_proxy():
                 raise 'Can\'t update proxy'
-        logger.debug('stack_length = ', len(page_stack))
         page = page_stack.pop()
-        logger.debug('page_id=', page.get_id())
+        logger.debug(
+            'stack = ', len(page_stack),
+            'page_id = ', page_get_id())
 
         for i in range(5):
             proxy = random.sample(
