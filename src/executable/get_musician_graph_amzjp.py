@@ -1,4 +1,4 @@
-from envutils import init_logger
+from envutils import get_amz_db, init_logger
 from bs4 import BeautifulSoup as Soup
 from http_utils import get_html, get_proxy_list
 from debug import get_logger
@@ -18,10 +18,12 @@ class AmazonHandler:
             self.data_dir = '/mnt/hdd500/amazon/jp/musician'
             self.title_pattern = re.compile('Amazon.co.jp: ([^:]+):')
             self.worksnum_pattern = re.compile('\\(([0-9]+)')
+            self.url_template = 'http://www.amazon.co.jp/%s/%s/%s/'
         elif lang == 'us':
             self.data_dir = '/mnt/hdd500/amazon/us/musician'
             self.title_pattern = re.compile('Amazon.com: ([^:]+):')
             self.worksnum_pattern = re.compile('\\(See all ([0-9]+)')
+            self.url_template = 'http://www.amazon.com/%s/%s/%s/'
         else:
             raise 'Invalid lang: %s' % (lang,)
 
@@ -55,6 +57,7 @@ class Page:
         self.url_obj = None
         self.content = None
         self.amz = amz
+        self._has_attrs = False
 
     def set_url(self, url):
         self.url = url
@@ -66,47 +69,91 @@ class Page:
         return self.id
 
     def title(self):
-        dom_title = self.soup.select_one('title').text
-        mat = self.amz.title_pattern.match(dom_title)
-        if not mat:
+        return self._title
+
+    def set_content_by_db(self, db):
+        rs = db.select_one('''
+            select page_type, name, worksnum, links
+            from page where page_id = %s
+            ''', args=(self.id,))
+        if not rs:
             return False
-        return mat.group(1)
+        similar_pages = [
+            Page.create_by_url(
+                self.amz.url_template % (
+                    hashlib.md5(page_id.encode()).hexdigest()[:8],
+                    page_id[0],
+                    page_id[2:]),
+                self.amz)
+            for page_id in rs['links'].split(',')]
+        self.set_attrs(
+            rs['name'],
+            rs['worksnum'],
+            similar_pages,
+            rs['page_type'] == 1)
+        return True
 
     def set_content(self, content):
         self.content = content
-        self.soup = Soup(content, 'html.parser')
+        soup = Soup(content, 'html.parser')
+        is_musician = len(soup.select('div.MusicCartBar')) > 0
+        link_elems = soup.select(self.amz.link_selector)
+        link_urls = [elem.get('href').strip() for elem in link_elems]
+        similar_pages = [
+            Page.create_by_url(url, self.amz) for url in link_urls]
+
+        elem = soup.select_one(self.amz.works_num_selector)
+        if elem is None:
+            works_num = len(soup.select(self.amz.work_selector))
+        else:
+            mat = self.amz.worksnum_pattern.match(elem.text)
+            if not mat:
+                return False
+            works_num = mat.group(1)
+
+        elem = soup.select_one('title')
+        if not elem:
+            return False
+        mat = self.amz.title_pattern.match(elem.text)
+        title = mat.group(1)
+        self.set_attrs(title, works_num, similar_pages, is_musician)
+        return True
+
+    def set_attrs(self, title, works_num, similar_pages, is_musician):
+        self._title = title
+        self._works_num = works_num
+        self._similar_pages = similar_pages
+        self._is_musician = is_musician
+        self._has_attrs = True
+
+    def has_attrs(self):
+        return self._has_attrs
 
     def is_musician(self):
-        return len(self.soup.select('div.MusicCartBar')) > 0
+        return self._is_musician
 
     def create_similar_pages(self):
-        link_elems = self.soup.select(self.amz.link_selector)
-        link_urls = [elem.get('href').strip() for elem in link_elems]
-        return [Page.create_by_url(url, self.amz) for url in link_urls]
+        return self._similar_pages
 
     def get_works_num(self):
-        elem = self.soup.select_one(self.amz.works_num_selector)
-        if elem is None:
-            return self.get_works_num_in_first_page()
-
-        mat = self.amz.worksnum_pattern.match(elem.text)
-        if not mat:
-            return False
-        return mat.group(1)
-
-    def get_works_num_in_first_page(self):
-        return len(self.soup.select(self.amz.work_selector))
+        return self._works_num
 
 
-def load_content(page, amz, proxy, sleep):
+def load_content(page, db, amz, proxy, sleep):
     logger = get_logger(__name__)
     data_path = amz.calc_data_path(page)
+
+    if page.set_content_by_db(db):
+        return True
+
     if os.path.exists(data_path):
         with open(data_path, 'r') as f:
             content = f.read()
-        if content:
-            page.set_content(content)
+        if page.set_content(content):
             return True
+        else:
+            os.remove(data_path)
+            logger.debug('Removed invalid file: ', data_path)
 
     start_at = time.time()
     with logger.lap('get_html proxy=%s' % (proxy,)):
@@ -119,7 +166,9 @@ def load_content(page, amz, proxy, sleep):
     else:
         proxy.log_success(elapsed_sec)
 
-    page.set_content(html)
+    if not page.set_content(html):
+        logger.log('Invalid page format')
+        return False
 
     dir_path = os.path.dirname(data_path)
     if not os.path.exists(dir_path):
@@ -214,6 +263,7 @@ if __name__ == '__main__':
     lang = args['lang']
 
     amz = AmazonHandler(lang)
+    db = get_amz_db(lang)
 
     if lang == 'ja':
         init_url = 'http://www.amazon.co.jp/%E3%82%B1%E3%83%9F%E3%82%AB%E3%83%AB%E3%83%BB%E3%83%96%E3%83%A9%E3%82%B6%E3%83%BC%E3%82%BA/e/B000AQ22AU/'
@@ -231,21 +281,32 @@ if __name__ == '__main__':
         page = page_stack.pop()
         logger.debug(
             'stack = ', len(page_stack),
-            'page_id = ', page_get_id())
+            'page_id = ', page.get_id())
 
-        for i in range(5):
+        ignore = False
+        for i in range(10):
             proxy = random.sample(
                 [p for p in proxy_list if p.is_available()],
                 1)[0]
-            if load_content(page, amz, proxy, 10):
+
+            try:
+                success = False
+                success = load_content(page, db, amz, proxy, 10)
+            except UnicodeDecodeError:
+                logger.debug('unicode error')
+                ignore = True
+                break
+
+            if success:
                 break
             logger.debug(
                 'Load error: url = ', page.url, 'proxy = ', proxy)
 
-        if page.content is None:
-            logger.debug(
-                'Can\'t load: url = ', page.url)
+        if ignore:
             continue
+
+        if not page.has_attrs():
+            raise 'Can\'t load: url = %s' % (page.url,)
 
         if not page.is_musician():
             continue

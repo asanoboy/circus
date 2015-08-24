@@ -272,6 +272,9 @@ class BaseDB:
         else:
             return rs[0]
 
+    def select_one(self, *args, **kw):
+        return self.selectOne(*args, **kw)
+
     def selectAndFetchAll(
             self, query, args=set(), dictFormat=True, decode=True):
         cur = None
