@@ -3,7 +3,7 @@ import argparse
 from envutils import get_amz_db, init_logger
 from debug import get_logger
 # from numerical import levenshtein
-from get_musician_graph_amzjp import AmazonHandler, Page
+from amzutils import AmazonHandler, ArtistPage
 from circus_itertools import lazy_chunked as chunked
 
 
@@ -15,8 +15,8 @@ def generate_musician_pages(amz, exclude_page_ids=[]):
             filepath = os.path.join(dirpath, filename)
             with open(filepath) as f:
                 content = f.read()
-            page = Page.create_by_html(filename, content, amz)
-            if not page.is_musician():
+            page = ArtistPage.create_by_html(filename, content, amz)
+            if not page or not page.is_musician():
                 continue
             yield filename, page
 
