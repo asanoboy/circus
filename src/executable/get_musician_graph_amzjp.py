@@ -58,15 +58,7 @@ if __name__ == '__main__':
     db = get_amz_db(lang)
     proxy_manager = ProxyManager()
 
-    if lang == 'ja':
-        init_url = \
-            'http://www.amazon.co.jp/The-Chemical-Brothers/e/B000AQ22AU/'
-    elif lang == 'us':
-        init_url = \
-            'http://www.amazon.com/The-Chemical-Brothers/e/B000AQ22AU/'
-    else:
-        raise 'Invalid lang = %s' % (lang,)
-    page_stack = [ArtistPage.create_by_url(init_url, amz)]
+    page_stack = [ArtistPage.create_by_url(amz.init_url, amz)]
     page_ids = {p.get_id() for p in page_stack}
 
     while len(page_stack) > 0:
@@ -98,7 +90,7 @@ if __name__ == '__main__':
         if not page.has_attrs():
             raise 'Can\'t load: url = %s' % (page.url,)
 
-        if not page.is_musician():
+        if not page.is_valid():
             continue
         for link_page in page.create_similar_pages():
             page_id = link_page.get_id()

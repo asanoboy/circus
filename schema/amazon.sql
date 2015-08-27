@@ -16,3 +16,11 @@ create table pagelinks (
     index id_from(id_from),
     index id_to(id_to)
 );
+
+create view v_pagelinks as
+select pl.*,
+pfrom.name name_from,
+pto.name name_to from pagelinks pl
+inner join page pfrom on pfrom.id = pl.id_from
+inner join page pto on pto.id = pl.id_to
+;

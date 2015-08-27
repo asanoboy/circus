@@ -5,18 +5,24 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup as Soup
 
 
+MUSICIAN_TYPE = 1
+MOVIE_TYPE = 2
 class AmazonHandler:
-    def __init__(self, lang):
+    def __init__(self, lang, page_type=1):
         if lang == 'ja':
             self.data_dir = '/mnt/hdd500/amazon/jp/musician'
             self.title_pattern = re.compile('Amazon.co.jp: ([^:]+):')
             self.worksnum_pattern = re.compile('\\(([0-9]+)')
             self.url_template = 'http://www.amazon.co.jp/%s/%s/%s/'
+            self.init_url = \
+                'http://www.amazon.co.jp/The-Chemical-Brothers/e/B000AQ22AU/'
         elif lang == 'us':
             self.data_dir = '/mnt/hdd500/amazon/us/musician'
             self.title_pattern = re.compile('Amazon.com: ([^:]+):')
             self.worksnum_pattern = re.compile('\\(See all ([0-9]+)')
             self.url_template = 'http://www.amazon.com/%s/%s/%s/'
+            self.init_url = \
+                'http://www.amazon.com/The-Chemical-Brothers/e/B000AQ22AU/'
         else:
             raise 'Invalid lang: %s' % (lang,)
 
@@ -85,6 +91,11 @@ class Page:
         return self._title
 
 
+class ContentPage(Page):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+
+
 class ArtistPage(Page):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
@@ -139,3 +150,6 @@ class ArtistPage(Page):
         title = mat.group(1)
         self.set_attrs(title, works_num, similar_pages, is_musician)
         return True
+
+    def is_valid(self):
+        return self.is_musician()
