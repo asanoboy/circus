@@ -24,28 +24,36 @@ class Logger:
         if file_handler:
             self.logger.addHandler(file_handler)
 
+    def timestr(self):
+        return time.strftime('%D %T')
+
     def debug(self, *args, **kw):
         text = ' '.join([str(arg) for arg in args])
+        text = '[%s] %s' % (self.timestr(), text)
         return self.logger.debug(text)
 
     def info(self, *args, **kw):
         text = ' '.join([str(arg) for arg in args])
+        text = '[%s] %s' % (self.timestr(), text)
         return self.logger.debug(text)
 
     def warning(self, *args, **kw):
         text = ' '.join([str(arg) for arg in args])
+        text = '[%s] %s' % (self.timestr(), text)
         return self.logger.info(text)
 
     def error(self, *args, **kw):
         text = ' '.join([str(arg) for arg in args])
+        text = '[%s] %s' % (self.timestr(), text)
         return self.logger.error(text)
 
     def critical(self, *args, **kw):
         text = ' '.join([str(arg) for arg in args])
+        text = '[%s] %s' % (self.timestr(), text)
         return self.logger.critical(text)
 
     def lap(self, tag):
-        return Lap(tag, self.logger)
+        return Lap(tag, self)
 
 
 @contextmanager
@@ -59,14 +67,15 @@ def Lap(tag, logger=None):
         print(log)
     level += 1
 
-    yield
+    try:
+        yield
+    finally:
+        level -= 1
+        interval = time.time() - start
+        log = '%s<< [%s] | elapsed time = %d' % \
+            ('  ' * level, tag, interval)
 
-    level -= 1
-    interval = time.time() - start
-    log = '%s<< [%s] | elapsed time = %d' % \
-        ('  ' * level, tag, interval)
-
-    if logger:
-        logger.debug(log)
-    else:
-        print(log)
+        if logger:
+            logger.debug(log)
+        else:
+            print(log)

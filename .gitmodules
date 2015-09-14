@@ -1,0 +1,3 @@
+[submodule "submodule/nimfa"]
+	path = submodule/nimfa
+	url = https://github.com/marinkaz/nimfa.git

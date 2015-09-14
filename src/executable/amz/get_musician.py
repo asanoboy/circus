@@ -44,6 +44,38 @@ def load_content(page, db, amz, proxy_manager, sleep):
     return True
 
 
+class ScrypeTarget:
+    def next(self):
+        pass
+
+    def add_content(self, url, content):
+        pass
+
+
+class ArtistScrypeTarget(ScrypeTarget):
+    def __init__(self, lang):
+        self.amz = AmazonHandler(lang)
+        self.db = get_amz_db(lang)
+        pass
+
+    def next(self):
+        pass
+
+    def add_content(self, url, content):
+        pass
+
+
+class Scryper:
+    def __init__(self, target):
+        self.target = target
+
+    def run(self):
+        while 1:
+            url = self.target.next()
+            if url is None:
+                break
+
+
 if __name__ == '__main__':
     init_logger()
     logger = get_logger(__name__)

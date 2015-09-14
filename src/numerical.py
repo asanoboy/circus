@@ -1,8 +1,12 @@
 import numpy as np
 import scipy.sparse as sp
+import scipy.io as io
 import random
 import itertools
+import os.path
 from debug import Lap
+import nimfa
+import time
 
 
 def levenshtein(s1, s2):
@@ -23,6 +27,34 @@ def levenshtein(s1, s2):
         previous_row = current_row
 
     return previous_row[-1]
+
+
+def add_suffix_if_not_exists(path, suffix):
+    if not path.endswith('.' + suffix):
+        path += '.' + suffix
+    return path
+
+
+def save_matrix(path, mat):
+    if isinstance(mat, sp.csr_matrix):
+        io.mmwrite(add_suffix_if_not_exists(path, 'mtx'), mat)
+        with open(path + '.type', 'w') as f:
+            f.write('csr')
+    else:
+        np.save(add_suffix_if_not_exists(path, 'npy'), mat)
+        with open(path + '.type', 'w') as f:
+            f.write('other')
+
+
+def load_matrix(path):
+    with open(path + '.type', 'r') as f:
+        type_info = f.read()
+
+    if type_info == 'csr':
+        mat = io.mmread(add_suffix_if_not_exists(path, 'mtx'))
+        return mat.tocsr()
+    else:
+        return np.load(add_suffix_if_not_exists(path, 'npy'))
 
 
 def getCategoryRelationship(elemInclusiveFlagsIter, catNum, elemNum):
@@ -55,11 +87,59 @@ def getCategoryRelationship(elemInclusiveFlagsIter, catNum, elemNum):
         for child, parents in childToParents.items()}
 
 
+class ErrorTracker(nimfa.models.mf_track.Mf_track):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+        self._last_time = None
+        self._cnt = 0
+
+    def track_error(self, run, residuals):
+        super().track_error(run, residuals)
+        current_time = time.time()
+        elapsed_time = None
+        if self._last_time is not None:
+            elapsed_time = current_time - self._last_time
+        self._last_time = current_time
+
+        self._cnt += 1
+        if elapsed_time:
+            print(
+                'cnt:%d, error:%f, elapsed=%f' %
+                (self._cnt, residuals, elapsed_time))
+        else:
+            print('cnt:%d, error:%f' % (self._cnt, residuals))
+
+
+def calc_mf(mx, Track=ErrorTracker, Method=nimfa.Als, track_error=True, **kw):
+    nmf = Method(mx.M, Track=Track, track_error=track_error, **kw)
+    nmf_fit = nmf()
+
+    fit = MfFit(mx, nmf_fit.fit.H, nmf_fit.fit.W)
+    fit.raw = nmf_fit
+    return fit
+
+
 class IdAndIndex:
     def __init__(self):
         self._id_to_index = {}
         self._index_to_id = []  # index is sequencial.
         self.is_fixed = False
+
+    @staticmethod
+    def load(path):
+        try:
+            id2dx = load_matrix(path + '.id2dx')
+            dx2id = load_matrix(path + '.dx2id')
+            id_and_dx = IdAndIndex()
+            id_and_dx._id_to_index = id2dx
+            id_and_dx._index_to_id = dx2id
+            return id_and_dx
+        except:
+            return None
+
+    def save(self, path):
+        save_matrix(path + '.dx2id', self._index_to_id)
+        save_matrix(path + '.id2dx', self._id_to_index)
 
     def has(self, input_id):
         return input_id in self._id_to_index
@@ -87,12 +167,74 @@ class IdAndIndex:
         return len(self._index_to_id)
 
 
+class MfFit:
+    def __init__(self, relationMx, H, W):
+        self.V = relationMx
+        self.H = H
+        self.W = W
+
+    @staticmethod
+    def load(path):
+        if not os.path.isdir(path):
+            return None
+
+        H = load_matrix(os.path.join(path, 'h'))
+        W = load_matrix(os.path.join(path, 'w'))
+
+        relationMx = RelationMatrix.load(os.path.join(path, 'v'))
+        if relationMx:
+            return MfFit(relationMx, H, W)
+        return None
+
+    def save(self, path):
+        if os.path.exists(path):
+            raise Exception('Already exists: %s' % (path,))
+
+        os.mkdir(path)
+
+        save_matrix(os.path.join(path, 'h'), self.H)
+        save_matrix(os.path.join(path, 'w'), self.W)
+        self.V.save(os.path.join(path, 'v'))
+
+    def rank(self):
+        return self.W.shape[1]
+
+    def w_rows_iter(self):
+        for idx in range(self.W.shape[0]):
+            id = self.V.src_id_and_index.find_id(idx)
+            yield id, list(self.W.getrow(idx).toarray()[0])
+
+
 class RelationMatrix:
     def __init__(self, src=None, dst=None):
         self.src_id_and_index = IdAndIndex() if src is None else src
         self.dst_id_and_index = IdAndIndex() if dst is None else dst
         self.index_set_to_value = {}
         self.M = None
+
+    @staticmethod
+    def load(path):
+        try:
+            M = load_matrix(path + '.M')
+            index_set_to_value = load_matrix(path + '.set')
+        except:
+            return None
+
+        src = IdAndIndex.load(path + '.src')
+        dst = IdAndIndex.load(path + '.dst')
+        if src and dst:
+            relMx = RelationMatrix(src, dst)
+            relMx.M = M
+            relMx.index_set_To_value = index_set_to_value
+            return relMx
+
+    def save(self, path):
+        if self.M is None:
+            raise Exception('Can\'t save RelationMatrix before call build().')
+        save_matrix(path + '.M', self.M)
+        save_matrix(path + '.set', self.index_set_to_value)
+        self.src_id_and_index.save(path + '.src')
+        self.dst_id_and_index.save(path + '.dst')
 
     def get_src(self):
         return self.src_id_and_index
