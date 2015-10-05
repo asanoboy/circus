@@ -1,5 +1,6 @@
 # from sklearn.feature_extraction.text import CountVectorizer as Vectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer as Vectorizer
+from config import dbhost, user, pw
 import scipy as sp
 from dbutils import WikiDB
 import nltk.stem
@@ -40,7 +41,8 @@ class StemmedCountVectorizer(Vectorizer):
 
 
 if __name__ == '__main__':
-    db = WikiDB('en')
+    # db = WikiDB('en')
+    db = WikiDB('en', user, dbhost, pw)
     names = [
         'The_Chemical_Brothers',
         'Deep_Forest',
@@ -71,6 +73,7 @@ if __name__ == '__main__':
         token_pattern=r'(?u)\b[\w_]+\b')
     X_train = vectorizer.fit_transform(contents)
     target_vec = vectorizer.transform([target])
+    print(target_vec)
 
     for i, content in enumerate(contents):
         content_vec = X_train.getrow(i)
@@ -78,6 +81,6 @@ if __name__ == '__main__':
         d = dist_norm(content_vec, target_vec)
         print('=== Content %i with dist=%.2f: %s' % (i, d, names[i]))
 
-    print(vectorizer.get_feature_names())
-    print(vectorizer.get_params())
-    print(dir(vectorizer))
+    # print(vectorizer.get_feature_names())
+    # print(vectorizer.get_params())
+    # print(dir(vectorizer))

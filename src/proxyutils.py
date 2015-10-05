@@ -6,13 +6,14 @@ import random
 
 
 class ProxyManager:
-    def __init__(self, interval=3600):
+    def __init__(self, interval=3600, num=20):
         self.proxy_list = []
         self.proxy_updated_at = 0
         self.update_interval = interval
+        self.num = num
 
-    def update(self):
-        if time.time() - self.proxy_updated_at > self.update_interval:
+    def update(self, force=False):
+        if force or time.time() - self.proxy_updated_at > self.update_interval:
             if not self._update_proxy():
                 raise 'Can\'t update proxy'
 
@@ -25,7 +26,7 @@ class ProxyManager:
                 continue
             for proxy in self.proxy_list:
                 logger.debug(proxy.dump())
-            self.proxy_list = [ProxyWrapper(p) for p in candidates[:30]]
+            self.proxy_list = [ProxyWrapper(p) for p in candidates[:self.num]]
             self.proxy_updated_at = time.time()
             logger.debug('Succeed to update proxy', self.proxy_updated_at)
             return True

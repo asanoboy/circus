@@ -249,6 +249,9 @@ class BaseDB:
     def multi_insert(self, *args, **kw):
         return self.multiInsert(*args, **kw)
 
+    def update_query(self, *args, **kw):
+        return self.updateQuery(*args, **kw)
+
     def updateQuery(self, query, args=set()):
         cur = self.write_conn.cursor()
         cur.execute(query, args)

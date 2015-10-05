@@ -6,12 +6,12 @@ from circus_itertools import lazy_chunked as chunked
 
 def generate_pagelinks_record(db):
     for r in db.generate_records_from_sql(
-            'select id, page_id, links from page'):
-        link_ids = r['links'].split(',')
-        for odr, page_id in enumerate(link_ids):
+            'select id, code, links from page'):
+        links = r['links'].split(',')
+        for odr, code in enumerate(links):
             record = db.select_one(
-                'select id from page where page_id = %s',
-                args=(page_id,))
+                'select id from page where code = %s',
+                args=(code,))
             if not record:
                 continue
             yield [r['id'], record['id'], odr]

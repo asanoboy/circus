@@ -60,7 +60,9 @@ def get_html(url_str, proxy=None, encode=None, timeout=None):
         content_type = res.getheader('content-type')
         mat = content_type_pattern.search(content_type)
         if mat is None:
-            raise 'Invalid content_type: %s' % (content_type,)
+            raise Exception(
+                'Invalid content_type: %s, %s' % (
+                    url_str, content_type,))
         return content.decode(mat.group(1))
 
     return None

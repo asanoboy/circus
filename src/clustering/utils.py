@@ -48,9 +48,9 @@ def get_method_to_comm(g):
     with logger.lap(method):
         method_to_comm[method] = g.community_label_propagation()
 
-    method = 'leading_eigenvector'
-    with logger.lap(method):
-        method_to_comm[method] = g.community_leading_eigenvector()
+    # method = 'leading_eigenvector'
+    # with logger.lap(method):
+    #     method_to_comm[method] = g.community_leading_eigenvector()
 
     # with logger.lap('leading_eigenvector_naive'):
     #     method_to_comm[method] = g.community_leading_eigenvector_naive()

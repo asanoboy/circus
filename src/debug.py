@@ -56,10 +56,21 @@ class Logger:
         return Lap(tag, self)
 
 
+class Timer:
+    def __init__(self):
+        self.start = time.time()
+
+    def elapsed(self):
+        return time.time() - self.start
+
+    def reset(self):
+        self.start = time.time()
+
+
 @contextmanager
 def Lap(tag, logger=None):
     global level
-    start = time.time()
+    timer = Timer()
     log = '%s>> [%s]' % ('  ' * level, tag)
     if logger:
         logger.debug(log)
@@ -68,10 +79,10 @@ def Lap(tag, logger=None):
     level += 1
 
     try:
-        yield
+        yield timer
     finally:
         level -= 1
-        interval = time.time() - start
+        interval = timer.elapsed()
         log = '%s<< [%s] | elapsed time = %d' % \
             ('  ' * level, tag, interval)
 
